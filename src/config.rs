@@ -973,7 +973,7 @@ impl ProbeConfig {
     }
 
     /// The underlying metric this probe gathers.
-    fn probe_type(&self) -> ProbeType {
+    pub(crate) fn probe_type(&self) -> ProbeType {
         match self {
             Self::Host(_) => ProbeType::Host,
             Self::OS(_) => ProbeType::OS,
