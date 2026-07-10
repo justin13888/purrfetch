@@ -41,6 +41,31 @@ you're actually on. (The hero image above is `purr --example fedora-desktop`.)
 | <img src="assets/examples/ubuntu.svg" alt="purr --example ubuntu"> `purr --example ubuntu` | <img src="assets/examples/macos.svg" alt="purr --example macos"> `purr --example macos` |
 | <img src="assets/examples/void.svg" alt="purr --example void"> `purr --example void` | |
 
+## How purr compares
+
+purr's goal is narrow on purpose: **be the neofetch you already know, without
+the wait or the abandonware.** If you're choosing a fetch tool:
+
+- **[neofetch](https://github.com/dylanaraps/neofetch)** — the original, archived
+  since 2024. purr replicates its default look, fields, flags, and `${c1}`..`${c6}`
+  ASCII format (the [parity matrix](docs/neofetch-parity.md) tracks every field),
+  while starting in ~20 ms instead of ~2 s. If you want neofetch, maintained and
+  fast, that's purr.
+- **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** — an excellent,
+  very featureful neofetch successor in C with its own JSONC configuration and a
+  broader module set. purr trades that breadth for neofetch-style TOML/flag
+  compatibility, a smaller single binary, and memory safety (Rust).
+- **[macchina](https://github.com/Macchina-CLI/macchina)** — a minimal,
+  aesthetics-focused fetch tool in Rust with its own distinct look. purr shares
+  its probe engine ([libmacchina](https://github.com/Macchina-CLI/libmacchina))
+  but targets neofetch's look and configuration surface instead.
+
+What purr deliberately does **not** do: neofetch's arbitrary-bash `print_info`
+scripting, its 60+ package-manager matrix, or the w3m-era image backends
+(kitty is supported; the rest are [intentionally deferred](docs/neofetch-parity.md)).
+Benchmarks against all three are reproducible via
+[`scripts/bench-compare.sh`](scripts/bench-compare.sh).
+
 ## Installation
 
 ### Cargo
@@ -289,6 +314,9 @@ A: I want to start from a clean state, including all the features the community 
 
 Q: What does purr use to fetch metrics under the hood?
 A: purr uses the `libmacchina` crate for most system-related info, plus native probes (GPU driver, GTK font, MPRIS now-playing, …) and a neofetch-compatible renderer on top.
+
+Q: Why threads instead of an async runtime?
+A: Each probe runs on its own scoped OS thread and streams its result to the renderer as it completes. Probes are dominated by blocking syscalls and subprocesses, so an async runtime (tokio, smol, …) would add binary size and complexity without improving wall-clock time — the slowest probe bounds the run either way.
 
 ## Issues
 
