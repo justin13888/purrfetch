@@ -28,6 +28,19 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 - **Highly customizable**: TOML config plus CLI flags for separators, colours, per-field options, color blocks, ASCII overrides, JSON output, and a Kitty image backend
 - **Modern neofetch replacement**: memory-safe, maintained, and distributed via native package managers across Windows, macOS, and Linux
 
+## Gallery
+
+Every render below is a real `purr` run against a curated example preset — try
+them yourself with `purr --example <preset>` on any machine, whatever distro
+you're actually on. (The hero image above is `purr --example fedora-desktop`.)
+
+| | |
+|---|---|
+| <img src="assets/examples/arch.svg" alt="purr --example arch"> `purr --example arch` | <img src="assets/examples/nixos.svg" alt="purr --example nixos"> `purr --example nixos` |
+| <img src="assets/examples/gentoo.svg" alt="purr --example gentoo"> `purr --example gentoo` | <img src="assets/examples/debian-server.svg" alt="purr --example debian-server"> `purr --example debian-server` |
+| <img src="assets/examples/ubuntu.svg" alt="purr --example ubuntu"> `purr --example ubuntu` | <img src="assets/examples/macos.svg" alt="purr --example macos"> `purr --example macos` |
+| <img src="assets/examples/void.svg" alt="purr --example void"> `purr --example void` | |
+
 ## Installation
 
 ### Cargo
@@ -121,6 +134,7 @@ Run `purr` with no arguments for the neofetch-style output. Useful flags:
 |---|---|
 | `--all` | show every probe |
 | `--json` | structured JSON output |
+| `--example [preset]` | render curated example data instead of live info (see [Gallery](#gallery)) |
 | `-L`/`--logo`, `--off` | logo only · no logo |
 | `--ascii_distro <name>` | force a distro logo |
 | `--ascii_colors "4 6 1"` | recolour the logo |
@@ -190,7 +204,7 @@ mise run fmt-check    # verify formatting without modifying files
 mise run lint-check   # verify clippy lints without modifying files
 mise run man          # regenerate man/purr.1 from the CLI definition
 mise run completions  # regenerate shell completions in completions/
-mise run svg          # regenerate assets/purr.svg demo screenshot (requires freeze)
+mise run svg          # regenerate assets/purr.svg + the assets/examples/ gallery (requires freeze)
 ```
 
 The man page (`man/purr.1`) and the shell completions (`completions/`) are
