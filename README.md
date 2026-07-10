@@ -138,6 +138,13 @@ brew install justin13888/tap/purr
 winget install justin13888.purr
 ```
 
+<!-- TODO(packaging): re-enable Scoop once packaging/scoop/purr.json is accepted into a bucket (see packaging/README.md). -->
+### Scoop (Windows)
+
+_Planned._ The manifest lives at [`packaging/scoop/purr.json`](packaging/scoop/purr.json);
+submission to a scoop bucket (`scoop install purr`) is pending. In the meantime it
+installs directly: `scoop install https://raw.githubusercontent.com/justin13888/purrfetch/master/packaging/scoop/purr.json`.
+
 > The native packages (Debian/Ubuntu `.deb`, Fedora `.rpm`, Nix) and Homebrew also install the `man purr` page and bash/zsh/fish shell completions. On Windows a PowerShell completion (`purr.ps1`) ships in the archive/MSI — it is not auto-loaded, so dot-source it from your `$PROFILE`.
 
 ### Git
