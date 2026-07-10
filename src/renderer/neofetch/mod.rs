@@ -77,6 +77,16 @@ fn resolve_colors(colors: &[u8], palette: &[u8; 6], primary: Color) -> ResolvedC
     }
 }
 
+/// Apply neofetch's `title_fqdn` semantics: off (default) strips the domain
+/// (`host.example.com` → `host`, matching neofetch's `${hostname/.*}` — on
+/// macOS this drops the `.local` suffix), on keeps the hostname as reported.
+fn title_hostname(hostname: String, fqdn: bool) -> String {
+    if !fqdn && let Some((short, _)) = hostname.split_once('.') {
+        return short.to_string();
+    }
+    hostname
+}
+
 impl NeofetchRenderer {
     pub fn new(config: NeofetchRendererConfig) -> Self {
         let probe_list = config
@@ -85,6 +95,15 @@ impl NeofetchRenderer {
             .map(|p| p.get_funcs())
             .collect::<Vec<_>>();
         Self { config, probe_list }
+    }
+
+    /// Resolve the `username@hostname` shown in the title, honouring
+    /// `title_fqdn`. Single source of truth for the ASCII and image paths.
+    fn title_identity(&self) -> Result<(String, String), RendererError> {
+        use libmacchina::traits::GeneralReadout as _;
+        let username = general_readout().username()?;
+        let hostname = title_hostname(general_readout().hostname()?, self.config.title_fqdn);
+        Ok((username, hostname))
     }
 
     /// Write `text` in `color`, optionally bold, then reset. ANSI is zero-width
@@ -168,11 +187,7 @@ impl NeofetchRenderer {
 
         // Print title (username@hostname)
         if self.config.title {
-            let username = general_readout().username()?;
-            // Use the hostname as-is, matching neofetch (`title_fqdn` off = plain
-            // `hostname`, which on macOS includes the `.local` suffix) and purr's
-            // own JSON renderer.
-            let hostname = general_readout().hostname()?;
+            let (username, hostname) = self.title_identity()?;
             title_len = username.chars().count() + hostname.chars().count() + 1;
             Self::put(&mut w, primary_color, false, &get_art(art_idx))?;
             queue!(w, Print("   "))?;
@@ -430,8 +445,6 @@ impl NeofetchRenderer {
     /// Build the plain info lines (title, underline, probe values) for the image
     /// backend, where the image rather than ASCII art occupies the left column.
     fn build_info_lines(&self) -> Result<Vec<String>, RendererError> {
-        use libmacchina::traits::GeneralReadout as _;
-
         let probes = &self.config.probes;
 
         let mut results: Vec<Option<Vec<String>>> = vec![None; self.probe_list.len()];
@@ -448,13 +461,7 @@ impl NeofetchRenderer {
         let sep = &self.config.separator;
         let mut lines = Vec::new();
         if self.config.title {
-            let username = general_readout().username()?;
-            let mut hostname = general_readout().hostname()?;
-            if !self.config.title_fqdn
-                && let Some((short, _)) = hostname.split_once('.')
-            {
-                hostname = short.to_string();
-            }
+            let (username, hostname) = self.title_identity()?;
             let title = format!("{username}@{hostname}");
             let len = title.chars().count();
             lines.push(title);
@@ -475,8 +482,24 @@ impl NeofetchRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_colors;
+    use super::{resolve_colors, title_hostname};
     use crossterm::style::Color;
+
+    #[test]
+    fn title_fqdn_off_strips_domain() {
+        assert_eq!(title_hostname("host.example.com".into(), false), "host");
+        assert_eq!(title_hostname("mac.local".into(), false), "mac");
+        assert_eq!(title_hostname("plain".into(), false), "plain");
+    }
+
+    #[test]
+    fn title_fqdn_on_keeps_hostname_as_reported() {
+        assert_eq!(
+            title_hostname("host.example.com".into(), true),
+            "host.example.com"
+        );
+        assert_eq!(title_hostname("plain".into(), true), "plain");
+    }
 
     #[test]
     fn distro_default_colors_match_neofetch() {
