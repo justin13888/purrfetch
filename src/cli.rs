@@ -26,6 +26,15 @@ pub struct Cli {
     /// Use the all-probes preset.
     #[clap(long)]
     pub all: bool,
+    /// Render curated example data for a preset instead of live system info.
+    #[clap(
+        long,
+        value_name = "PRESET",
+        value_enum,
+        num_args = 0..=1,
+        default_missing_value = "fedora-desktop"
+    )]
+    pub example: Option<crate::demo::DemoPresetId>,
 
     /// Use the neofetch text renderer.
     #[clap(short, long, group = "renderer")]
@@ -111,4 +120,23 @@ pub struct GenerateCommandArgs {
     /// Use all default presets.
     #[clap(long)]
     pub all: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::demo::DemoPresetId;
+
+    #[test]
+    fn example_flag_parses() {
+        let cli = Cli::try_parse_from(["purr", "--example", "arch"]).unwrap();
+        assert_eq!(cli.example, Some(DemoPresetId::Arch));
+
+        // Bare `--example` falls back to the hero preset.
+        let cli = Cli::try_parse_from(["purr", "--example"]).unwrap();
+        assert_eq!(cli.example, Some(DemoPresetId::FedoraDesktop));
+
+        let cli = Cli::try_parse_from(["purr"]).unwrap();
+        assert_eq!(cli.example, None);
+    }
 }

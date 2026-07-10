@@ -12,6 +12,7 @@ use tracing::debug;
 use crate::{
     ascii::{get_ascii_art, get_distro_color, get_filler},
     config::{Backend, NeofetchRendererConfig},
+    demo::DemoPreset,
     probe::{ProbeList, ProbeResultValue, general_readout},
 };
 
@@ -20,6 +21,9 @@ use super::{RendererError, execute_probes_streaming};
 pub struct NeofetchRenderer {
     config: NeofetchRendererConfig,
     probe_list: ProbeList,
+    /// `Some` when rendering curated example data (`--example`) — the probe
+    /// list is canned and the title/logo identity comes from the preset.
+    demo: Option<&'static DemoPreset>,
 }
 
 impl Default for NeofetchRenderer {
@@ -94,16 +98,58 @@ impl NeofetchRenderer {
             .iter()
             .map(|p| p.get_funcs())
             .collect::<Vec<_>>();
-        Self { config, probe_list }
+        Self {
+            config,
+            probe_list,
+            demo: None,
+        }
+    }
+
+    /// Render `preset`'s curated data instead of live probes. The preset picks
+    /// the logo unless the config (e.g. `--ascii_distro`) already forces one.
+    pub fn new_demo(mut config: NeofetchRendererConfig, preset: &'static DemoPreset) -> Self {
+        crate::demo::normalize_probes(&mut config.probes);
+        if config.ascii.distro.is_none() {
+            config.ascii.distro = Some(preset.distro.to_string());
+        }
+        let probe_list = config
+            .probes
+            .iter()
+            .map(|p| (p.label().to_string(), preset.probe_fn(p.probe_type())))
+            .collect();
+        Self {
+            config,
+            probe_list,
+            demo: Some(preset),
+        }
     }
 
     /// Resolve the `username@hostname` shown in the title, honouring
     /// `title_fqdn`. Single source of truth for the ASCII and image paths.
     fn title_identity(&self) -> Result<(String, String), RendererError> {
+        if let Some(preset) = self.demo {
+            return Ok((preset.username.to_string(), preset.hostname.to_string()));
+        }
         use libmacchina::traits::GeneralReadout as _;
         let username = general_readout().username()?;
         let hostname = title_hostname(general_readout().hostname()?, self.config.title_fqdn);
         Ok((username, hostname))
+    }
+
+    /// The distro whose logo (and tint) is shown: an explicit `ascii_distro`
+    /// wins, then the demo preset, then live detection.
+    fn logo_distro(&self) -> String {
+        if let Some(distro) = &self.config.ascii.distro {
+            return distro.clone();
+        }
+        if let Some(preset) = self.demo {
+            return preset.distro.to_string();
+        }
+        use libmacchina::traits::GeneralReadout as _;
+        general_readout()
+            .distribution()
+            .or_else(|_| general_readout().os_name())
+            .unwrap_or_else(|_| "Linux".to_string())
     }
 
     /// Write `text` in `color`, optionally bold, then reset. ANSI is zero-width
@@ -127,21 +173,13 @@ impl NeofetchRenderer {
     }
 
     pub fn draw(&self) -> Result<(), RendererError> {
-        use libmacchina::traits::GeneralReadout as _;
-
         // The Kitty image backend short-circuits the ASCII renderer when it
         // applies; otherwise it returns false and we fall through to ASCII.
         if self.draw_image()? {
             return Ok(());
         }
 
-        let detected = general_readout()
-            .distribution()
-            .or_else(|_| general_readout().os_name())
-            .unwrap_or_else(|_| "Linux".to_string());
-
-        // `ascii_distro` overrides which logo (and its tint) is shown.
-        let distro = self.config.ascii.distro.clone().unwrap_or(detected);
+        let distro = self.logo_distro();
         debug!("Logo distro: {}", distro);
 
         let (full_art, full_width, base_palette) = get_ascii_art(&distro);
@@ -482,8 +520,26 @@ impl NeofetchRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_colors, title_hostname};
+    use super::{NeofetchRenderer, resolve_colors, title_hostname};
+    use crate::config::NeofetchRendererConfig;
+    use crate::demo;
     use crossterm::style::Color;
+
+    #[test]
+    fn demo_renderer_uses_preset_identity_and_logo() {
+        let r = NeofetchRenderer::new_demo(NeofetchRendererConfig::default(), &demo::ARCH);
+        assert_eq!(r.logo_distro(), "Arch Linux");
+        let (user, host) = r.title_identity().unwrap();
+        assert_eq!((user.as_str(), host.as_str()), ("kt", "tokyo"));
+    }
+
+    #[test]
+    fn ascii_distro_overrides_demo_logo() {
+        let mut config = NeofetchRendererConfig::default();
+        config.ascii.distro = Some("gentoo".to_string());
+        let r = NeofetchRenderer::new_demo(config, &demo::ARCH);
+        assert_eq!(r.logo_distro(), "gentoo");
+    }
 
     #[test]
     fn title_fqdn_off_strips_domain() {
