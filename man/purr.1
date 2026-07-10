@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH purr 1  "purr 1.0.0" 
+.TH purr 1  "purr 1.0.2" 
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
 .SH NAME
@@ -8,7 +8,7 @@ purr \- Fast, featureful, cross\-platform fetching tool written in Rust
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
 .SH SYNOPSIS
-\fBpurr\fR [\fB\-\-verbose\fR] [\fB\-c\fR|\fB\-\-config\fR] [\fB\-\-no\-config\fR] [\fB\-\-all\fR] [\fB\-n\fR|\fB\-\-neofetch\fR] [\fB\-\-json\fR] [\fB\-\-ascii_distro\fR] [\fB\-\-ascii_colors\fR] [\fB\-\-no_ascii_bold\fR] [\fB\-L\fR|\fB\-\-logo\fR] [\fB\-\-off\fR] [\fB\-\-backend\fR] [\fB\-\-source\fR] [\fB\-\-separator\fR] [\fB\-\-no_bold\fR] [\fB\-\-underline_char\fR] [\fB\-\-title_fqdn\fR] [\fB\-\-colors\fR] [\fB\-\-stdout\fR] [\fB\-\-memory_unit\fR] [\fB\-\-uptime_shorthand\fR] [\fB\-\-cpu_cores\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
+\fBpurr\fR [\fB\-\-verbose\fR] [\fB\-c\fR|\fB\-\-config\fR] [\fB\-\-no\-config\fR] [\fB\-\-all\fR] [\fB\-\-example\fR] [\fB\-n\fR|\fB\-\-neofetch\fR] [\fB\-\-json\fR] [\fB\-\-ascii_distro\fR] [\fB\-\-ascii_colors\fR] [\fB\-\-no_ascii_bold\fR] [\fB\-L\fR|\fB\-\-logo\fR] [\fB\-\-off\fR] [\fB\-\-backend\fR] [\fB\-\-source\fR] [\fB\-\-separator\fR] [\fB\-\-no_bold\fR] [\fB\-\-underline_char\fR] [\fB\-\-title_fqdn\fR] [\fB\-\-colors\fR] [\fB\-\-stdout\fR] [\fB\-\-memory_unit\fR] [\fB\-\-uptime_shorthand\fR] [\fB\-\-cpu_cores\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIsubcommands\fR]
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
 .SH DESCRIPTION
@@ -37,6 +37,31 @@ Ignore any config file and start from the built\-in defaults
 .TP
 \fB\-\-all\fR
 Use the all\-probes preset
+.TP
+\fB\-\-example\fR [\fI<PRESET>\fR]
+Render curated example data for a preset instead of live system info
+.br
+
+.br
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+fedora\-desktop: Fedora Workstation desktop (the README hero)
+.IP \(bu 2
+arch
+.IP \(bu 2
+nixos
+.IP \(bu 2
+gentoo
+.IP \(bu 2
+debian\-server
+.IP \(bu 2
+ubuntu
+.IP \(bu 2
+macos
+.IP \(bu 2
+void
+.RE
 .TP
 \fB\-n\fR, \fB\-\-neofetch\fR
 Use the neofetch text renderer
@@ -93,7 +118,7 @@ Uptime format: on, tiny, or off
 CPU cores: logical, physical, or off
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help
+Print help (see a summary with \*(Aq\-h\*(Aq)
 .TP
 \fB\-V\fR, \fB\-\-version\fR
 Print version
@@ -146,7 +171,7 @@ to print its resolved path, or \fBpurr generate\fR to write a starter file.
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
 .SH VERSION
-v1.0.0
+v1.0.2
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
 .SH AUTHORS

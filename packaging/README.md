@@ -56,6 +56,7 @@ would not trigger `release.yml`, and a PAT is disallowed by policy.
 | Fedora COPR — *deferred* | `packaging/rpm/purrfetch.spec` + `.copr/Makefile` | COPR (build-from-git) | create COPR project `justin13888/purr` + webhook |
 | AUR — *deferred* | `packaging/aur/purr-bin`, `packaging/aur/purr-git` | `aur.yml` (chains on `workflow_run: Release`) | AUR account + `AUR_SSH_PRIVATE_KEY` secret; create the empty packages |
 | Alpine — *deferred* | `packaging/alpine/APKBUILD` | manual MR to `alpinelinux/aports` | Alpine developer account |
+| Scoop — *deferred* | `packaging/scoop/purr.json` | manual PR to a scoop bucket (`autoupdate` keeps it current once accepted) | pick a bucket: PR to [scoop extras](https://github.com/ScoopInstaller/Extras), or create a `justin13888/scoop-bucket` repo (a personal bucket would need a push token in CI to auto-update — deferred with the token-free policy; extras runs `autoupdate` upstream, no token) |
 | Nix | `flake.nix` (repo root) | `nix run github:justin13888/purrfetch` | ✅ works today; optional: submit to nixpkgs |
 
 ## Layout
@@ -72,6 +73,7 @@ packaging/
   aur/purr-git/{PKGBUILD,.SRCINFO}
   alpine/APKBUILD
   rpm/purrfetch.spec
+  scoop/purr.json
 .github/workflows/{package-linux,winget,aur,homebrew-completions}.yml  # chain on `workflow_run: Release` (aur deferred)
 .github/workflows/release-plz.yml                  # release PR + crates.io publish (Trusted Publishing)
 ```
@@ -169,3 +171,9 @@ the tag.
   (`.copr/Makefile`); add the GitHub webhook for auto-rebuilds.
 - **nixpkgs / Alpine aports.** Upstream the `flake.nix` derivation and
   `packaging/alpine/APKBUILD` via their respective review processes.
+- **Scoop.** PR `packaging/scoop/purr.json` to [ScoopInstaller/Extras](https://github.com/ScoopInstaller/Extras)
+  (their CI then runs `checkver`/`autoupdate` on every release — nothing to
+  automate on our side, keeping CI token-free). Test on a Windows box first:
+  `scoop install ./packaging/scoop/purr.json`. Bump the pinned `version`/`hash`
+  to the newest release before submitting (they match the asset the manifest
+  was authored against; `autoupdate` takes over afterwards).

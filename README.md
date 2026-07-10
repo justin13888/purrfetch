@@ -28,6 +28,44 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 - **Highly customizable**: TOML config plus CLI flags for separators, colours, per-field options, color blocks, ASCII overrides, JSON output, and a Kitty image backend
 - **Modern neofetch replacement**: memory-safe, maintained, and distributed via native package managers across Windows, macOS, and Linux
 
+## Gallery
+
+Every render below is a real `purr` run against a curated example preset — try
+them yourself with `purr --example <preset>` on any machine, whatever distro
+you're actually on. (The hero image above is `purr --example fedora-desktop`.)
+
+| | |
+|---|---|
+| <img src="assets/examples/arch.svg" alt="purr --example arch"> `purr --example arch` | <img src="assets/examples/nixos.svg" alt="purr --example nixos"> `purr --example nixos` |
+| <img src="assets/examples/gentoo.svg" alt="purr --example gentoo"> `purr --example gentoo` | <img src="assets/examples/debian-server.svg" alt="purr --example debian-server"> `purr --example debian-server` |
+| <img src="assets/examples/ubuntu.svg" alt="purr --example ubuntu"> `purr --example ubuntu` | <img src="assets/examples/macos.svg" alt="purr --example macos"> `purr --example macos` |
+| <img src="assets/examples/void.svg" alt="purr --example void"> `purr --example void` | |
+
+## How purr compares
+
+purr's goal is narrow on purpose: **be the neofetch you already know, without
+the wait or the abandonware.** If you're choosing a fetch tool:
+
+- **[neofetch](https://github.com/dylanaraps/neofetch)** — the original, archived
+  since 2024. purr replicates its default look, fields, flags, and `${c1}`..`${c6}`
+  ASCII format (the [parity matrix](docs/neofetch-parity.md) tracks every field),
+  while starting in ~20 ms instead of ~2 s. If you want neofetch, maintained and
+  fast, that's purr.
+- **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** — an excellent,
+  very featureful neofetch successor in C with its own JSONC configuration and a
+  broader module set. purr trades that breadth for neofetch-style TOML/flag
+  compatibility, a smaller single binary, and memory safety (Rust).
+- **[macchina](https://github.com/Macchina-CLI/macchina)** — a minimal,
+  aesthetics-focused fetch tool in Rust with its own distinct look. purr shares
+  its probe engine ([libmacchina](https://github.com/Macchina-CLI/libmacchina))
+  but targets neofetch's look and configuration surface instead.
+
+What purr deliberately does **not** do: neofetch's arbitrary-bash `print_info`
+scripting, its 60+ package-manager matrix, or the w3m-era image backends
+(kitty is supported; the rest are [intentionally deferred](docs/neofetch-parity.md)).
+Benchmarks against all three are reproducible via
+[`scripts/bench-compare.sh`](scripts/bench-compare.sh).
+
 ## Installation
 
 ### Cargo
@@ -100,6 +138,13 @@ brew install justin13888/tap/purr
 winget install justin13888.purr
 ```
 
+<!-- TODO(packaging): re-enable Scoop once packaging/scoop/purr.json is accepted into a bucket (see packaging/README.md). -->
+### Scoop (Windows)
+
+_Planned._ The manifest lives at [`packaging/scoop/purr.json`](packaging/scoop/purr.json);
+submission to a scoop bucket (`scoop install purr`) is pending. In the meantime it
+installs directly: `scoop install https://raw.githubusercontent.com/justin13888/purrfetch/master/packaging/scoop/purr.json`.
+
 > The native packages (Debian/Ubuntu `.deb`, Fedora `.rpm`, Nix) and Homebrew also install the `man purr` page and bash/zsh/fish shell completions. On Windows a PowerShell completion (`purr.ps1`) ships in the archive/MSI — it is not auto-loaded, so dot-source it from your `$PROFILE`.
 
 ### Git
@@ -121,6 +166,7 @@ Run `purr` with no arguments for the neofetch-style output. Useful flags:
 |---|---|
 | `--all` | show every probe |
 | `--json` | structured JSON output |
+| `--example [preset]` | render curated example data instead of live info (see [Gallery](#gallery)) |
 | `-L`/`--logo`, `--off` | logo only · no logo |
 | `--ascii_distro <name>` | force a distro logo |
 | `--ascii_colors "4 6 1"` | recolour the logo |
@@ -190,7 +236,7 @@ mise run fmt-check    # verify formatting without modifying files
 mise run lint-check   # verify clippy lints without modifying files
 mise run man          # regenerate man/purr.1 from the CLI definition
 mise run completions  # regenerate shell completions in completions/
-mise run svg          # regenerate assets/purr.svg demo screenshot (requires freeze)
+mise run svg          # regenerate assets/purr.svg + the assets/examples/ gallery (requires freeze)
 ```
 
 The man page (`man/purr.1`) and the shell completions (`completions/`) are
@@ -276,6 +322,9 @@ A: I want to start from a clean state, including all the features the community 
 Q: What does purr use to fetch metrics under the hood?
 A: purr uses the `libmacchina` crate for most system-related info, plus native probes (GPU driver, GTK font, MPRIS now-playing, …) and a neofetch-compatible renderer on top.
 
+Q: Why threads instead of an async runtime?
+A: Each probe runs on its own scoped OS thread and streams its result to the renderer as it completes. Probes are dominated by blocking syscalls and subprocesses, so an async runtime (tokio, smol, …) would add binary size and complexity without improving wall-clock time — the slowest probe bounds the run either way.
+
 ## Issues
 
 If you encounter any issues, please open an issue on the GitHub repository.
@@ -285,6 +334,21 @@ If you encounter any issues, please open an issue on the GitHub repository.
 Feel free to submit an issue or PR on GitHub.
 
 > Notice: Looking for submissions/suggestions of new ASCII arts: <https://github.com/justin13888/purrfetch/issues/1>
+
+## Credits
+
+purr stands on two projects in particular:
+
+- **[neofetch](https://github.com/dylanaraps/neofetch)** — the ASCII distro logos
+  (`${c1}`..`${c6}` markers included) and the layout purr replicates are ported
+  from neofetch, along with its field-formatting behavior. Thank you, Dylan
+  Araps and the neofetch contributors.
+- **[macchina](https://github.com/Macchina-CLI/macchina) / [libmacchina](https://github.com/Macchina-CLI/libmacchina)** —
+  libmacchina powers most of purr's probes. Instead of forking, purr pushes
+  probe performance tweaks upstream to libmacchina directly, so improvements
+  land in both projects.
+
+See [NOTICE.md](NOTICE.md) for full third-party attributions.
 
 ## License
 

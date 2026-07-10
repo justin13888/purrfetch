@@ -916,7 +916,7 @@ impl From<ProbeType> for ProbeResultFunction {
 }
 
 /// Probe type. Refer to `ProbeValue` for what each metric corresponds to.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum ProbeType {
     Host,
     OS,

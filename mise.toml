@@ -48,7 +48,7 @@ description = "Verify completions/ is in sync with the CLI (run `mise run comple
 run = ["cargo run --quiet --example gen-completions", "git diff --exit-code -- completions/"]
 
 [tasks.svg]
-description = "Regenerate assets/purr.svg demo screenshot (requires freeze)"
+description = "Regenerate assets/purr.svg + the assets/examples/ gallery from the --example presets (requires freeze)"
 run = "bash scripts/gen-svg.sh"
 
 [tasks.start]

@@ -5,6 +5,17 @@ purr (purrfetch) is licensed under the MIT License — see [LICENSE](LICENSE).
 This product includes software and assets derived from third-party projects,
 reproduced here in accordance with their licenses.
 
+## libmacchina (Macchina)
+
+purr links against [libmacchina](https://github.com/Macchina-CLI/libmacchina),
+the system-readout library behind [macchina](https://github.com/Macchina-CLI/macchina),
+which powers most of purr's probes (OS, kernel, uptime, packages, CPU, memory,
+battery, and more). Rather than forking, purr contributes probe performance
+improvements upstream to libmacchina so both projects benefit.
+
+libmacchina is distributed under the MIT License; see its
+[LICENSE](https://github.com/Macchina-CLI/libmacchina/blob/main/LICENSE.md).
+
 ## neofetch
 
 purr aims for feature-parity with [neofetch](https://github.com/dylanaraps/neofetch)

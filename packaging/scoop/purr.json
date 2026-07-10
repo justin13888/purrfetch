@@ -1,0 +1,27 @@
+{
+    "version": "1.0.1",
+    "description": "Fast, featureful, cross-platform fetching tool written in Rust — a neofetch successor",
+    "homepage": "https://github.com/justin13888/purrfetch",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/justin13888/purrfetch/releases/download/v1.0.1/purrfetch-x86_64-pc-windows-msvc.zip",
+            "hash": "4c8bb22048ef56c6ab3bccb60599fe8bec1522e9bcb7b7c7ed7b590566684340"
+        }
+    },
+    "bin": "purr.exe",
+    "checkver": {
+        "github": "https://github.com/justin13888/purrfetch"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/justin13888/purrfetch/releases/download/v$version/purrfetch-x86_64-pc-windows-msvc.zip",
+                "hash": {
+                    "url": "$url.sha256"
+                }
+            }
+        }
+    },
+    "notes": "PowerShell completions ship in the archive as purr.ps1 — dot-source it from your $PROFILE to enable them."
+}

@@ -23,6 +23,7 @@ Register-ArgumentCompleter -Native -CommandName 'purr' -ScriptBlock {
         'purr' {
             [CompletionResult]::new('-c', '-c', [CompletionResultType]::ParameterName, 'Path to a custom config file')
             [CompletionResult]::new('--config', '--config', [CompletionResultType]::ParameterName, 'Path to a custom config file')
+            [CompletionResult]::new('--example', '--example', [CompletionResultType]::ParameterName, 'Render curated example data for a preset instead of live system info')
             [CompletionResult]::new('--ascii_distro', '--ascii_distro', [CompletionResultType]::ParameterName, 'Force a specific distro logo (e.g. "arch")')
             [CompletionResult]::new('--ascii_colors', '--ascii_colors', [CompletionResultType]::ParameterName, 'Override logo colours (space/comma list, e.g. "4 6 1")')
             [CompletionResult]::new('--backend', '--backend', [CompletionResultType]::ParameterName, 'Logo backend: ascii or kitty')
@@ -46,8 +47,8 @@ Register-ArgumentCompleter -Native -CommandName 'purr' -ScriptBlock {
             [CompletionResult]::new('--no_bold', '--no_bold', [CompletionResultType]::ParameterName, 'Don''t bold the title and labels')
             [CompletionResult]::new('--title_fqdn', '--title_fqdn', [CompletionResultType]::ParameterName, 'Show the fully-qualified hostname')
             [CompletionResult]::new('--stdout', '--stdout', [CompletionResultType]::ParameterName, 'Pipe-friendly output: disable colour')
-            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help')
-            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help')
+            [CompletionResult]::new('-h', '-h', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
+            [CompletionResult]::new('--help', '--help', [CompletionResultType]::ParameterName, 'Print help (see more with ''--help'')')
             [CompletionResult]::new('-V', '-V ', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('--version', '--version', [CompletionResultType]::ParameterName, 'Print version')
             [CompletionResult]::new('generate', 'generate', [CompletionResultType]::ParameterValue, 'Generate a new config file')

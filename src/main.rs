@@ -145,18 +145,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     debug!("Config: {:?}", config);
 
-    match config {
-        Config::Neofetch(neofetch_config) => {
+    // `--example` swaps live probes for a curated preset's canned data.
+    let demo = args.example.map(|id| id.preset());
+
+    match (config, demo) {
+        (Config::Neofetch(neofetch_config), demo) => {
             let renderer = {
                 let _span = info_span!("renderer_init").entered();
-                NeofetchRenderer::new(neofetch_config)
+                match demo {
+                    Some(preset) => NeofetchRenderer::new_demo(neofetch_config, preset),
+                    None => NeofetchRenderer::new(neofetch_config),
+                }
             };
             let _span = info_span!("render").entered();
             renderer.draw()?;
         }
-        Config::Json(json_config) => {
+        (Config::Json(json_config), demo) => {
             let _span = info_span!("render").entered();
-            JsonRenderer::new(json_config).draw()?;
+            let renderer = match demo {
+                Some(preset) => JsonRenderer::new_demo(json_config, preset),
+                None => JsonRenderer::new(json_config),
+            };
+            renderer.draw()?;
         }
     };
 
