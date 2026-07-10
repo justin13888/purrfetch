@@ -300,6 +300,21 @@ Feel free to submit an issue or PR on GitHub.
 
 > Notice: Looking for submissions/suggestions of new ASCII arts: <https://github.com/justin13888/purrfetch/issues/1>
 
+## Credits
+
+purr stands on two projects in particular:
+
+- **[neofetch](https://github.com/dylanaraps/neofetch)** — the ASCII distro logos
+  (`${c1}`..`${c6}` markers included) and the layout purr replicates are ported
+  from neofetch, along with its field-formatting behavior. Thank you, Dylan
+  Araps and the neofetch contributors.
+- **[macchina](https://github.com/Macchina-CLI/macchina) / [libmacchina](https://github.com/Macchina-CLI/libmacchina)** —
+  libmacchina powers most of purr's probes. Instead of forking, purr pushes
+  probe performance tweaks upstream to libmacchina directly, so improvements
+  land in both projects.
+
+See [NOTICE.md](NOTICE.md) for full third-party attributions.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
