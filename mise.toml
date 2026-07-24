@@ -55,6 +55,10 @@ run = "bash scripts/gen-svg.sh"
 description = "Build and run purr (forward args: mise run start -- <args>)"
 run = "cargo run --"
 
+[tasks.bench-compare]
+description = "Benchmark purr against available fetch tools end to end"
+run = "cargo run --release --example bench-compare"
+
 [tasks.install]
 description = "Build purr in release mode and install the binary to CARGO_HOME/bin"
 run = "cargo install --path . --locked"
