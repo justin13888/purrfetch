@@ -280,8 +280,7 @@ fn count_packages_macos() -> Vec<(String, usize)> {
     counts
 }
 
-/// GPU names for this platform: `system_profiler` chipset models on macOS,
-/// libmacchina's `gpus()` elsewhere.
+/// GPU names for this platform: `system_profiler` chipset models on macOS.
 #[cfg(target_os = "macos")]
 fn gpus_list() -> Result<Vec<String>, ProbeError> {
     let out = run_command("system_profiler", &["SPDisplaysDataType"])?;
@@ -293,7 +292,78 @@ fn gpus_list() -> Result<Vec<String>, ProbeError> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Parse the model name populated by udev's PCI database lookup.
+#[cfg(target_os = "linux")]
+fn parse_udev_gpu_model(data: &str) -> Option<String> {
+    data.lines().find_map(|line| {
+        line.strip_prefix("E:ID_MODEL_FROM_DATABASE=")
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .map(str::to_string)
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn is_display_controller_class(class: &str) -> bool {
+    class.trim().to_ascii_lowercase().starts_with("0x03")
+}
+
+/// Read names for every PCI display controller from udev's already-populated
+/// database. `None` requests the slower libmacchina fallback; this includes
+/// partial results so a missing udev record never silently drops a GPU.
+#[cfg(target_os = "linux")]
+fn linux_gpu_models_from_udev(
+    pci_devices: &std::path::Path,
+    udev_data: &std::path::Path,
+) -> Option<Vec<String>> {
+    let mut models = Vec::new();
+    for entry in std::fs::read_dir(pci_devices).ok()? {
+        let entry = entry.ok()?;
+        let class = std::fs::read_to_string(entry.path().join("class")).ok()?;
+        if !is_display_controller_class(&class) {
+            continue;
+        }
+
+        let address = entry.file_name().into_string().ok()?;
+        let data = std::fs::read_to_string(udev_data.join(format!("+pci:{address}"))).ok()?;
+        models.push(parse_udev_gpu_model(&data)?);
+    }
+    (!models.is_empty()).then_some(models)
+}
+
+#[cfg(target_os = "linux")]
+fn prefer_udev_gpu_models<F>(
+    udev_models: Option<Vec<String>>,
+    fallback: F,
+) -> Result<Vec<String>, ProbeError>
+where
+    F: FnOnce() -> Result<Vec<String>, ProbeError>,
+{
+    match udev_models {
+        Some(models) => Ok(models),
+        None => fallback(),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn gpus_list() -> Result<Vec<String>, ProbeError> {
+    use libmacchina::traits::GeneralReadout as _;
+
+    let udev_models = {
+        let _span = debug_span!("gpu_udev").entered();
+        linux_gpu_models_from_udev(
+            std::path::Path::new("/sys/bus/pci/devices"),
+            std::path::Path::new("/run/udev/data"),
+        )
+    };
+    prefer_udev_gpu_models(udev_models, || {
+        let _span = debug_span!("gpu_libmacchina_fallback").entered();
+        Ok(general_readout().gpus()?)
+    })
+}
+
+/// Other platforms retain libmacchina's GPU implementation.
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn gpus_list() -> Result<Vec<String>, ProbeError> {
     use libmacchina::traits::GeneralReadout as _;
     Ok(general_readout().gpus()?)
@@ -1768,6 +1838,107 @@ mod tests {
     fn parses_chipset_models() {
         let sp = "      Bus: Built-In\n          Resolution: 3456 x 2234 Retina\n          Chipset Model: Apple M3 Pro\n";
         assert_eq!(parse_chipset_models(sp), vec!["Apple M3 Pro".to_string()]);
+    }
+
+    #[cfg(target_os = "linux")]
+    mod linux_gpu {
+        use std::{
+            cell::Cell,
+            fs,
+            path::PathBuf,
+            sync::atomic::{AtomicU64, Ordering},
+        };
+
+        use super::super::{
+            is_display_controller_class, linux_gpu_models_from_udev, parse_udev_gpu_model,
+            prefer_udev_gpu_models,
+        };
+
+        static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+        struct TempTree(PathBuf);
+
+        impl TempTree {
+            fn new() -> Self {
+                let id = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+                let path = std::env::temp_dir()
+                    .join(format!("purrfetch-gpu-test-{}-{id}", std::process::id()));
+                fs::create_dir_all(&path).unwrap();
+                Self(path)
+            }
+        }
+
+        impl Drop for TempTree {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        #[test]
+        fn recognizes_pci_display_classes() {
+            assert!(is_display_controller_class("0x030000\n"));
+            assert!(is_display_controller_class("  0X030200"));
+            assert!(!is_display_controller_class("0x020000\n"));
+            assert!(!is_display_controller_class(""));
+        }
+
+        #[test]
+        fn parses_nonempty_udev_model() {
+            let data = "E:ID_VENDOR_FROM_DATABASE=AMD\n\
+                        E:ID_MODEL_FROM_DATABASE=Navi 31 [Radeon RX 7900 XT]\n";
+            assert_eq!(
+                parse_udev_gpu_model(data).as_deref(),
+                Some("Navi 31 [Radeon RX 7900 XT]")
+            );
+            assert_eq!(parse_udev_gpu_model("E:ID_MODEL_FROM_DATABASE=  "), None);
+            assert_eq!(parse_udev_gpu_model("E:PCI_ID=1002:744C"), None);
+        }
+
+        #[test]
+        fn reads_all_gpu_models_and_ignores_other_pci_devices() {
+            let tree = TempTree::new();
+            let pci = tree.0.join("pci");
+            let udev = tree.0.join("udev");
+            fs::create_dir_all(pci.join("0000:03:00.0")).unwrap();
+            fs::create_dir_all(pci.join("0000:04:00.0")).unwrap();
+            fs::create_dir_all(pci.join("0000:05:00.0")).unwrap();
+            fs::create_dir_all(&udev).unwrap();
+            fs::write(pci.join("0000:03:00.0/class"), "0x030000\n").unwrap();
+            fs::write(pci.join("0000:04:00.0/class"), "0x030200\n").unwrap();
+            fs::write(pci.join("0000:05:00.0/class"), "0x020000\n").unwrap();
+            fs::write(
+                udev.join("+pci:0000:03:00.0"),
+                "E:ID_MODEL_FROM_DATABASE=Discrete GPU\n",
+            )
+            .unwrap();
+            fs::write(
+                udev.join("+pci:0000:04:00.0"),
+                "E:ID_MODEL_FROM_DATABASE=Integrated GPU\n",
+            )
+            .unwrap();
+
+            let mut models = linux_gpu_models_from_udev(&pci, &udev).unwrap();
+            models.sort();
+            assert_eq!(models, ["Discrete GPU", "Integrated GPU"]);
+        }
+
+        #[test]
+        fn incomplete_udev_data_uses_fallback() {
+            let called = Cell::new(false);
+            let models = prefer_udev_gpu_models(None, || {
+                called.set(true);
+                Ok(vec!["Fallback GPU".to_string()])
+            })
+            .unwrap();
+            assert!(called.get());
+            assert_eq!(models, ["Fallback GPU"]);
+
+            let fast = prefer_udev_gpu_models(Some(vec!["Fast GPU".to_string()]), || {
+                panic!("fallback must not run when udev data is complete")
+            })
+            .unwrap();
+            assert_eq!(fast, ["Fast GPU"]);
+        }
     }
 
     #[test]

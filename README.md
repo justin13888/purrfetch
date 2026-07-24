@@ -263,14 +263,19 @@ Commits must follow [Conventional Commits](https://www.conventionalcommits.org/)
 
 #### End-to-end comparison (hyperfine)
 
-Requires [hyperfine](https://github.com/sharkdp/hyperfine). Compares purr against any of neofetch, macchina, and fastfetch that are installed.
+Requires [hyperfine](https://github.com/sharkdp/hyperfine) and
+[fastfetch](https://github.com/fastfetch-cli/fastfetch). The primary performance
+contract compares clean, non-TTY runs with user configuration disabled and a
+matched default module set. This avoids treating purr's `--all` probes as
+equivalent to another tool's defaults.
 
 ```bash
 bash scripts/bench-compare.sh           # warm benchmark
 bash scripts/bench-compare.sh --cold    # also cold-cache (requires sudo)
 ```
 
-Results are written to `bench-results.json` and `bench-results.md`.
+The script reports tool and host versions alongside the measurements. Results
+are written to `bench-results.json` and `bench-results.md`.
 
 #### Probe microbenchmarks (criterion)
 
