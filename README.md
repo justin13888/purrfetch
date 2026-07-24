@@ -30,9 +30,15 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 
 ## Gallery
 
-Every render below is a real `purr` run against a curated example preset — try
-them yourself with `purr --example <preset>` on any machine, whatever distro
-you're actually on. (The hero image above is `purr --example fedora-desktop`.)
+Every render below is a real `purr` run against a curated example preset. The
+presets are compiled only when the default-off `example` Cargo feature is
+enabled, so you can try them on any machine with:
+
+```bash
+cargo run --features example -- --example <preset>
+```
+
+The hero image above uses the `fedora-desktop` preset.
 
 | | |
 |---|---|
@@ -166,7 +172,6 @@ Run `purr` with no arguments for the neofetch-style output. Useful flags:
 |---|---|
 | `--all` | show every probe |
 | `--json` | structured JSON output |
-| `--example [preset]` | render curated example data instead of live info (see [Gallery](#gallery)) |
 | `-L`/`--logo`, `--off` | logo only · no logo |
 | `--ascii_distro <name>` | force a distro logo |
 | `--ascii_colors "4 6 1"` | recolour the logo |
@@ -174,6 +179,16 @@ Run `purr` with no arguments for the neofetch-style output. Useful flags:
 | `--memory_unit gib`, `--uptime_shorthand tiny`, `--cpu_cores physical` | per-field options |
 | `--backend kitty --source <img.png>` | Kitty image backend |
 | `--stdout` | plain output (honours `NO_COLOR`) |
+
+The optional `--example [preset]` flag renders curated data instead of live
+system information. Install a feature-enabled binary or run it directly:
+
+```bash
+cargo install --locked --features example purrfetch
+cargo run --features example -- --example <preset>
+```
+
+See the [Gallery](#gallery) for available presets.
 
 Run `purr --help` for the full list, or `man purr` for the manual page (also
 checked in at [`man/purr.1`](man/purr.1) and bundled in release archives).
@@ -229,9 +244,9 @@ Common tasks (run `mise tasks` to list them all):
 
 ```bash
 mise run start        # build and run purr (forward args: mise run start -- <args>)
-mise run test         # run the test suite
+mise run test         # test both default and example-feature builds
 mise run fmt          # format code in place
-mise run lint         # auto-fix clippy lints, then verify
+mise run lint         # lint both default and example-feature builds
 mise run fmt-check    # verify formatting without modifying files
 mise run lint-check   # verify clippy lints without modifying files
 mise run man          # regenerate man/purr.1 from the CLI definition

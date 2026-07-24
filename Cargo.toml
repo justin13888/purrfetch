@@ -146,6 +146,8 @@ inherits = "release"
 lto = "thin"
 
 [features]
+default = []
+example = []
 openwrt = ["libmacchina/openwrt"]
 profile = ["dep:tracing-chrome"]
 
