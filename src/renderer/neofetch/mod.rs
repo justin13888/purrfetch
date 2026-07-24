@@ -9,10 +9,11 @@ use crossterm::{
 };
 use tracing::debug;
 
+#[cfg(feature = "example")]
+use crate::demo::DemoPreset;
 use crate::{
     ascii::{get_ascii_art, get_distro_color, get_filler},
     config::{Backend, NeofetchRendererConfig},
-    demo::DemoPreset,
     probe::{ProbeList, ProbeResultValue, general_readout},
 };
 
@@ -21,6 +22,7 @@ use super::{RendererError, execute_probes_streaming};
 pub struct NeofetchRenderer {
     config: NeofetchRendererConfig,
     probe_list: ProbeList,
+    #[cfg(feature = "example")]
     /// `Some` when rendering curated example data (`--example`) — the probe
     /// list is canned and the title/logo identity comes from the preset.
     demo: Option<&'static DemoPreset>,
@@ -101,12 +103,14 @@ impl NeofetchRenderer {
         Self {
             config,
             probe_list,
+            #[cfg(feature = "example")]
             demo: None,
         }
     }
 
     /// Render `preset`'s curated data instead of live probes. The preset picks
     /// the logo unless the config (e.g. `--ascii_distro`) already forces one.
+    #[cfg(feature = "example")]
     pub fn new_demo(mut config: NeofetchRendererConfig, preset: &'static DemoPreset) -> Self {
         crate::demo::normalize_probes(&mut config.probes);
         if config.ascii.distro.is_none() {
@@ -127,6 +131,7 @@ impl NeofetchRenderer {
     /// Resolve the `username@hostname` shown in the title, honouring
     /// `title_fqdn`. Single source of truth for the ASCII and image paths.
     fn title_identity(&self) -> Result<(String, String), RendererError> {
+        #[cfg(feature = "example")]
         if let Some(preset) = self.demo {
             return Ok((preset.username.to_string(), preset.hostname.to_string()));
         }
@@ -142,6 +147,7 @@ impl NeofetchRenderer {
         if let Some(distro) = &self.config.ascii.distro {
             return distro.clone();
         }
+        #[cfg(feature = "example")]
         if let Some(preset) = self.demo {
             return preset.distro.to_string();
         }
@@ -520,11 +526,16 @@ impl NeofetchRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::{NeofetchRenderer, resolve_colors, title_hostname};
+    #[cfg(feature = "example")]
+    use super::NeofetchRenderer;
+    use super::{resolve_colors, title_hostname};
+    #[cfg(feature = "example")]
     use crate::config::NeofetchRendererConfig;
+    #[cfg(feature = "example")]
     use crate::demo;
     use crossterm::style::Color;
 
+    #[cfg(feature = "example")]
     #[test]
     fn demo_renderer_uses_preset_identity_and_logo() {
         let r = NeofetchRenderer::new_demo(NeofetchRendererConfig::default(), &demo::ARCH);
@@ -533,6 +544,7 @@ mod tests {
         assert_eq!((user.as_str(), host.as_str()), ("kt", "tokyo"));
     }
 
+    #[cfg(feature = "example")]
     #[test]
     fn ascii_distro_overrides_demo_logo() {
         let mut config = NeofetchRendererConfig::default();
