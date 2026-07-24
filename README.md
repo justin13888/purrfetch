@@ -63,8 +63,8 @@ the wait or the abandonware.** If you're choosing a fetch tool:
 What purr deliberately does **not** do: neofetch's arbitrary-bash `print_info`
 scripting, its 60+ package-manager matrix, or the w3m-era image backends
 (kitty is supported; the rest are [intentionally deferred](docs/neofetch-parity.md)).
-Benchmarks against all three are reproducible via
-[`scripts/bench-compare.sh`](scripts/bench-compare.sh).
+Portable end-to-end benchmarks against these tools and other maintained fetch
+utilities are reproducible via `mise run bench-compare`.
 
 ## Installation
 
@@ -263,14 +263,26 @@ Commits must follow [Conventional Commits](https://www.conventionalcommits.org/)
 
 #### End-to-end comparison (hyperfine)
 
-Requires [hyperfine](https://github.com/sharkdp/hyperfine). Compares purr against any of neofetch, macchina, and fastfetch that are installed.
+Requires [hyperfine](https://github.com/sharkdp/hyperfine). The portable runner
+builds purr in release mode and compares it with every available supported
+competitor: fastfetch, macchina, neofetch, neowofetch, screenFetch, and
+NerdFetch. Missing or unusable tools produce a coloured warning and are skipped.
 
 ```bash
-bash scripts/bench-compare.sh           # warm benchmark
-bash scripts/bench-compare.sh --cold    # also cold-cache (requires sudo)
+mise run bench-compare
+# or: cargo run --release --example bench-compare
 ```
 
-Results are written to `bench-results.json` and `bench-results.md`.
+The benchmark disables user configuration where each tool supports it, drains
+the complete rendered output through a pipe, warms each command five times, and
+records at least 20 measured runs. This is process-completion latency, not
+time-to-first-paint or an internal probe metric.
+
+Results are written to the ignored `bench-results.json` and
+`bench-results.md` files. Both include the host and tool versions, exact
+commands, sampling policy, skipped-tool reasons, and hyperfine measurements so
+results from different operating systems and machines can be interpreted in
+context.
 
 #### Probe microbenchmarks (criterion)
 
