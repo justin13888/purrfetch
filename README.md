@@ -11,7 +11,7 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
   <a href="LICENSE"><img src="https://img.shields.io/crates/l/purrfetch.svg" alt="license"></a>
 </p>
 
-> **purr is v1 — stable and actively maintained.** A fast, memory-safe, drop-in
+> **purr is v1 — stable and actively maintained.** A fast, cross-platform, drop-in
 > successor to the archived [neofetch](https://github.com/dylanaraps/neofetch).
 
 <p align="center">
