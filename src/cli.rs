@@ -135,6 +135,9 @@ mod tests {
         let cli = Cli::try_parse_from(["purr", "--example", "arch"]).unwrap();
         assert_eq!(cli.example, Some(DemoPresetId::Arch));
 
+        let cli = Cli::try_parse_from(["purr", "--example", "windows"]).unwrap();
+        assert_eq!(cli.example, Some(DemoPresetId::Windows));
+
         // Bare `--example` falls back to the hero preset.
         let cli = Cli::try_parse_from(["purr", "--example"]).unwrap();
         assert_eq!(cli.example, Some(DemoPresetId::FedoraDesktop));

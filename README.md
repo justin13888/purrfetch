@@ -45,7 +45,7 @@ The hero image above uses the `fedora-desktop` preset.
 | <img src="assets/examples/arch.svg" alt="purr --example arch"> `purr --example arch` | <img src="assets/examples/nixos.svg" alt="purr --example nixos"> `purr --example nixos` |
 | <img src="assets/examples/gentoo.svg" alt="purr --example gentoo"> `purr --example gentoo` | <img src="assets/examples/debian-server.svg" alt="purr --example debian-server"> `purr --example debian-server` |
 | <img src="assets/examples/ubuntu.svg" alt="purr --example ubuntu"> `purr --example ubuntu` | <img src="assets/examples/macos.svg" alt="purr --example macos"> `purr --example macos` |
-| <img src="assets/examples/void.svg" alt="purr --example void"> `purr --example void` | |
+| <img src="assets/examples/windows.svg" alt="purr --example windows"> `purr --example windows` | <img src="assets/examples/void.svg" alt="purr --example void"> `purr --example void` |
 
 ## How purr compares
 

@@ -36,7 +36,7 @@ PURR="$REPO_ROOT/target/release/purr"
 
 # The hero preset renders to assets/purr.svg; the rest go to assets/examples/.
 HERO="fedora-desktop"
-GALLERY=(arch nixos gentoo debian-server ubuntu macos void)
+GALLERY=(arch nixos gentoo debian-server ubuntu macos windows void)
 
 mkdir -p "$REPO_ROOT/assets/examples"
 TMP_DIR="$(mktemp -d)"
