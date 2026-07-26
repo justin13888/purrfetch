@@ -20,13 +20,13 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 
 ## Why purr?
 
-[neofetch](https://github.com/dylanaraps/neofetch) is archived and no longer maintained. If its look is part of your terminal-startup ritual — the thing you see every time a shell opens — purr keeps exactly that: the same fields, the same `${c1}`..`${c6}` ASCII, the same vibe. The difference is it's **instant** instead of the visible pause neofetch takes to start. It's a drop-in successor that's [actively maintained and packaged for most platforms](#installation) (with more package managers on the way).
+[neofetch](https://github.com/dylanaraps/neofetch) is archived and no longer maintained. If its look is part of your terminal-startup ritual — the thing you see every time a shell opens — purr keeps exactly that: the same fields, the same `${c1}`..`${c6}` ASCII, the same vibe. The difference is it's **instant** instead of the visible pause neofetch takes to start. It's an actively maintained [drop-in successor for Linux, macOS, and Windows](#installation).
 
 - **Fast**: probes run in parallel on native Rust; a typical run finishes in ~20 ms — roughly **91× faster** than neofetch's ~2 s
 - **Cross-platform**: Linux, macOS, and Windows
 - **neofetch-compatible**: matches neofetch's commonly-used info fields, styling, configuration, and `${c1}`..`${c6}` ASCII format. The [parity matrix](docs/neofetch-parity.md) records exactly what's covered and what's intentionally deferred
 - **Highly customizable**: TOML config plus CLI flags for separators, colours, per-field options, color blocks, ASCII overrides, JSON output, and a Kitty image backend
-- **Modern neofetch replacement**: memory-safe, maintained, and distributed via native package managers across Windows, macOS, and Linux
+- **Modern neofetch replacement**: memory-safe, maintained, and shipped through release-tested channels for Windows, macOS, and Linux
 
 ## Gallery
 
@@ -74,95 +74,102 @@ Benchmarks against all three are reproducible via
 
 ## Installation
 
-### Cargo
+Official installation support is intentionally limited to channels exercised
+end to end before every release:
+
+| OS | Recommended path | Supported GitHub builds |
+|---|---|---|
+| Linux | Shell installer; Homebrew is an alternative | x86_64 and aarch64 `.tar.xz` archives |
+| macOS | Homebrew | Intel and Apple Silicon `.tar.xz` archives; shell installer |
+| Windows | PowerShell installer or MSI | x86_64 `.zip` and `.msi` |
+
+All files are available on the
+[latest GitHub release](https://github.com/justin13888/purrfetch/releases/latest).
+
+### Linux
+
+Use the shell installer:
 
 ```bash
-cargo install --locked purrfetch
-```
-
-### Prebuilt binaries
-
-Download a binary for your platform from the [latest release](https://github.com/justin13888/purrfetch/releases/latest), or use the install script:
-
-```bash
-# Linux & macOS
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/justin13888/purrfetch/releases/latest/download/purrfetch-installer.sh | sh
 ```
 
-```powershell
-# Windows
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/justin13888/purrfetch/releases/latest/download/purrfetch-installer.ps1 | iex"
-```
-
-<!-- TODO(packaging): re-enable Alpine once the APKBUILD is accepted into alpinelinux/aports (needs the v1.0.0 release tarball + `abuild checksum`). -->
-### Alpine Linux
-
-_Planned._ The [`APKBUILD`](packaging/alpine/APKBUILD) is available to build from in the meantime; upstreaming into the Alpine repositories (`apk add purr`) is pending.
-
-<!-- TODO(packaging): re-enable AUR once an AUR account + AUR_SSH_PRIVATE_KEY secret are set up; aur.yml then deploys purr-bin/purr-git automatically on each release. -->
-### Arch Linux
-
-_Planned._ AUR recipes for `purr-bin` (prebuilt) and `purr-git` (build from source) live in [`packaging/aur/`](packaging/aur/); publishing to the AUR (`paru -S purr-bin`) is not yet live.
-
-### Debian/Ubuntu and derivatives
-
-Download the `.deb` for your architecture from the [latest release](https://github.com/justin13888/purrfetch/releases/latest) and install it:
-
-```bash
-sudo dpkg -i purrfetch_*_amd64.deb
-```
-
-### Fedora
-
-Grab the `.rpm` from the [latest release](https://github.com/justin13888/purrfetch/releases/latest) and install it:
-
-```bash
-sudo dnf install ./purrfetch-*.rpm
-```
-
-<!-- TODO(packaging): re-enable COPR once the copr project justin13888/purr is created with a Git-built package (.copr/Makefile) + GitHub webhook. -->
-_A Fedora COPR repository (`sudo dnf copr enable justin13888/purr && sudo dnf install purr`) is planned._
-
-### Nix
-
-Run it directly, or install it into your profile (the flake also exposes an overlay and `packages.default`):
-
-```bash
-nix run github:justin13888/purrfetch
-nix profile install github:justin13888/purrfetch
-```
-
-### Homebrew (macOS & Linux)
+For a manual installation, download
+`purrfetch-x86_64-unknown-linux-gnu.tar.xz` or
+`purrfetch-aarch64-unknown-linux-gnu.tar.xz` from the latest release.
+Homebrew is also supported:
 
 ```bash
 brew install justin13888/tap/purr
 ```
 
-### Winget (Windows)
+### macOS
 
-```powershell
-winget install justin13888.purr
+Homebrew is recommended on both Intel and Apple Silicon:
+
+```bash
+brew install justin13888/tap/purr
 ```
 
-<!-- TODO(packaging): re-enable Scoop once packaging/scoop/purr.json is accepted into a bucket (see packaging/README.md). -->
-### Scoop (Windows)
+The shell installer is also supported:
 
-_Planned._ The manifest lives at [`packaging/scoop/purr.json`](packaging/scoop/purr.json);
-submission to a scoop bucket (`scoop install purr`) is pending. In the meantime it
-installs directly: `scoop install https://raw.githubusercontent.com/justin13888/purrfetch/master/packaging/scoop/purr.json`.
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/justin13888/purrfetch/releases/latest/download/purrfetch-installer.sh | sh
+```
 
-> The native packages (Debian/Ubuntu `.deb`, Fedora `.rpm`, Nix) and Homebrew also install the `man purr` page and bash/zsh/fish shell completions. On Windows a PowerShell completion (`purr.ps1`) ships in the archive/MSI — it is not auto-loaded, so dot-source it from your `$PROFILE`.
+For a manual installation, download `purrfetch-x86_64-apple-darwin.tar.xz`
+for Intel or `purrfetch-aarch64-apple-darwin.tar.xz` for Apple Silicon.
 
-### Git
+### Windows
 
-Note: This method is suggested for one of the following reasons:
+Use the PowerShell installer:
 
-1. Latest `purr` version
-2. Native package manager is unsupported or not preferred
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/justin13888/purrfetch/releases/latest/download/purrfetch-installer.ps1 | iex"
+```
 
-To install via Git, follow these steps:
-1. Clone this repository.
-2. Run `cargo install --path .` in the repository root.
+The latest release also provides
+`purrfetch-x86_64-pc-windows-msvc.msi` and a portable
+`purrfetch-x86_64-pc-windows-msvc.zip`.
+
+### Cargo
+
+[Install Rust](https://www.rust-lang.org/tools/install), then choose the stable
+crates.io release or the current Git branch:
+
+```bash
+# Stable release from crates.io
+cargo install --locked purrfetch
+
+# Current master from Git
+cargo install --locked --git https://github.com/justin13888/purrfetch.git purrfetch
+```
+
+### Mise
+
+[Mise](https://mise.jdx.dev/) installs purr through its Cargo backend, so Rust
+must already be installed:
+
+```bash
+# Stable release from crates.io
+mise use -g cargo:purrfetch@latest
+
+# Current master from Git
+mise use -g cargo:https://github.com/justin13888/purrfetch@branch:master
+```
+
+Homebrew installs `man purr` and bash, zsh, and fish completions. GitHub
+archives bundle the same files for manual installation. On Windows,
+`purr.ps1` ships in the ZIP and MSI; dot-source it from your PowerShell
+`$PROFILE` to enable completion.
+
+### Deferred distribution channels
+
+`.deb`, `.rpm`, Nix, winget, Scoop, Alpine, AUR/Arch, and Fedora COPR are
+deferred pending demonstrated demand and repeatable end-to-end validation.
+Dormant prototype recipes remain in the repository, but may be stale and are
+not official installation channels. See the
+[packaging support matrix](packaging/README.md) for the maintainer policy.
 
 ## Usage
 
@@ -221,7 +228,7 @@ Use a `[Json]` table (or `--json`) for JSON output.
 purr targets neofetch [`ccd5d9f`](https://github.com/dylanaraps/neofetch/blob/ccd5d9f52609bbdcd5d8fa78c4fdb0f12954125f/neofetch):
 
 - [`docs/neofetch-parity.md`](docs/neofetch-parity.md) — dated, field-by-field parity with deferred features
-- [`docs/os-support.md`](docs/os-support.md) — the 50 shipped logos and the pruned distro list
+- [`docs/os-support.md`](docs/os-support.md) — runtime OS detection, the 50 shipped logos, and the pruned distro list (not installation-channel support)
 
 ## Development
 
@@ -322,7 +329,11 @@ cargo run --release --features profile -- --all
 cargo flamegraph --profile profiling -- --all
 ```
 
-## Packaging
+## Community packaging
+
+Repology tracks packages maintained outside purr's official release process.
+A listing there does not make a channel part of the
+[supported installation matrix](#installation).
 
 Package version across repositories:
 
@@ -337,7 +348,7 @@ Q: Why did you write another fetch tool?
 A: It's feature-rich, fast, and written in a memory-safe language (Rust). The goal is to make it a modern, well-maintained replacement for neofetch and more.
 
 Q: Why not contribute to an existing fetch tool?
-A: I want to start from a clean state, including all the features the community wants, and make it truly universally supported and deployable to all common platforms.
+A: I want to start from a clean state, including the features the community wants, and make it run well across the supported Linux, macOS, and Windows targets.
 
 Q: What does purr use to fetch metrics under the hood?
 A: purr uses the `libmacchina` crate for most system-related info, plus native probes (GPU driver, GTK font, MPRIS now-playing, …) and a neofetch-compatible renderer on top.

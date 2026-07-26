@@ -1,3 +1,5 @@
+# DORMANT PROTOTYPE: deferred pending demand and end-to-end validation.
+# This recipe may be stale and is not part of release automation.
 # Maintainer: justin13888 <20733699+justin13888@users.noreply.github.com>
 pkgname=purr-bin
 pkgver=1.0.0
@@ -15,8 +17,7 @@ source_aarch64=("purr-$pkgver-aarch64.tar.xz::$url/releases/download/v$pkgver/pu
 # namcap flags the literal arch above; it is intentional — the release assets are
 # named by full target triple, which differs from $CARCH (x86_64-unknown-linux-gnu
 # vs x86_64). Arch-specific source arrays are the correct idiom for -bin packages.
-# Real checksums are filled per-release by the deploy workflow (updpkgsums);
-# SKIP keeps the committed template buildable.
+# A future validated publication process must replace these SKIP checksums.
 sha256sums_x86_64=('SKIP')
 sha256sums_aarch64=('SKIP')
 
