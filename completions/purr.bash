@@ -56,7 +56,7 @@ _purr() {
                     return 0
                     ;;
                 --example)
-                    COMPREPLY=($(compgen -W "fedora-desktop arch nixos gentoo debian-server ubuntu macos void" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "fedora-desktop arch nixos gentoo debian-server ubuntu macos windows void" -- "${cur}"))
                     return 0
                     ;;
                 --ascii_distro)

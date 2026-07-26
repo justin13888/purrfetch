@@ -24,6 +24,7 @@ gentoo\:""
 debian-server\:""
 ubuntu\:""
 macos\:""
+windows\:""
 void\:""))' \
 '--ascii_distro=[Force a specific distro logo (e.g. "arch")]:DISTRO:_default' \
 '--ascii_colors=[Override logo colours (space/comma list, e.g. "4 6 1")]:LIST:_default' \

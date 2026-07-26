@@ -32,6 +32,7 @@ gentoo\t''
 debian-server\t''
 ubuntu\t''
 macos\t''
+windows\t''
 void\t''"
 complete -c purr -n "__fish_purr_needs_command" -l ascii_distro -d 'Force a specific distro logo (e.g. "arch")' -r
 complete -c purr -n "__fish_purr_needs_command" -l ascii_colors -d 'Override logo colours (space/comma list, e.g. "4 6 1")' -r
