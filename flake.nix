@@ -1,12 +1,14 @@
 {
+  # DORMANT PROTOTYPE: Nix distribution is deferred pending demand and
+  # end-to-end validation. This flake may be stale and is not release-tested.
   description = "purr — fast, neofetch-compatible system information tool";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
     let
-      # Linux is verified in CI; the binary is self-contained (links only libc),
-      # so darwin builds via the same derivation with no extra inputs.
+      # The binary is self-contained (links only libc), so Darwin builds use the
+      # same prototype derivation with no extra inputs.
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
       cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);

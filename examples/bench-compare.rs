@@ -14,6 +14,8 @@ use serde_json::Value;
 const WARMUP_RUNS: u32 = 5;
 const MINIMUM_RUNS: u32 = 20;
 const OUTPUT_MODE: &str = "pipe";
+const FASTFETCH_STRUCTURE: &str = "Title:Separator:OS:Host:Kernel:Uptime:Packages:Shell:Display:DE:WM:WMTheme:Theme:Icons:\
+     Terminal:TerminalFont:CPU:GPU:Memory";
 
 #[derive(Debug)]
 struct ToolSpec {
@@ -152,7 +154,7 @@ fn execute_benchmark(
     let purr_spec = ToolSpec {
         name: "purr",
         executables: vec![purr_executable.clone()],
-        arguments: vec!["--no-config".into()],
+        arguments: vec!["--no-config".into(), "--stdout".into()],
         version_arguments: &["--version"],
     };
     let purr = preflight_tool(&purr_spec)
@@ -241,7 +243,13 @@ fn competitor_specs(macchina_config: &str) -> Vec<ToolSpec> {
         ToolSpec {
             name: "fastfetch",
             executables: vec!["fastfetch".into()],
-            arguments: vec!["--config".into(), "none".into()],
+            arguments: vec![
+                "--config".into(),
+                "none".into(),
+                "--pipe".into(),
+                "--structure".into(),
+                FASTFETCH_STRUCTURE.into(),
+            ],
             version_arguments: &["--version"],
         },
         ToolSpec {

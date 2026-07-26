@@ -1,111 +1,687 @@
-name: Release-plz
-
-permissions: {}
+name: Release management
 
 on:
   push:
     branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: "Stable release tag (for example v1.1.0)"
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  DIST_VERSION: "0.32.0"
 
 jobs:
-  # Publishes the crate to crates.io once a release PR is merged (i.e. once the
-  # version in Cargo.toml is ahead of what is on crates.io). Publishing uses
-  # crates.io Trusted Publishing (OIDC) ONLY: release-plz performs the token
-  # exchange itself when `id-token: write` is granted and no registry token is
-  # present, so there is no CARGO_REGISTRY_TOKEN and no fallback. See
-  # https://release-plz.dev/docs/github/quickstart and
-  # https://crates.io/docs/trusted-publishing.
-  #
-  # This job does NOT create the git tag or the GitHub release: `git_tag_enable`
-  # and `git_release_enable` are false in release-plz.toml. cargo-dist owns the
-  # tag-triggered binary release, and a tag pushed here with GITHUB_TOKEN would
-  # not trigger release.yml anyway (and a PAT is disallowed by policy). The owner
-  # pushes `v{version}` locally to kick off cargo-dist — see packaging/README.md.
-  #
-  # First-time note: crates.io Trusted Publishing cannot publish a brand-new
-  # crate. The very first version must be published once with a local
-  # `cargo publish`; every version after that is published here automatically.
-  release-plz-release:
-    name: Release-plz release (crates.io Trusted Publishing)
+  release-pr:
+    name: Create or update release PR
+    if: github.event_name == 'push' && github.repository_owner == 'justin13888'
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'justin13888'
-    permissions:
-      contents: read
-      id-token: write # OIDC token exchange with crates.io — no registry token.
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Run release-plz
-        id: release-plz
-        uses: release-plz/action@v0.5
-        with:
-          command: release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Intentionally no CARGO_REGISTRY_TOKEN: crates.io publishing is via
-          # Trusted Publishing (OIDC) only, and must never fall back to a token.
-
-      # release-plz publishes to crates.io but deliberately does NOT tag or build
-      # binaries (git_tag_enable/git_release_enable = false). cargo-dist's binary
-      # release fires only on a pushed `v*` tag, and a GITHUB_TOKEN-pushed tag would
-      # not trigger it — so the owner pushes the tag by hand. That is easy to forget
-      # (crate lands on crates.io while GitHub has no matching tag/release, as
-      # happened for v1.0.1). Surface a loud reminder whenever a publish happened.
-      - name: Remind to push the release tag
-        if: success()
-        env:
-          RELEASES: ${{ steps.release-plz.outputs.releases }}
-        run: |
-          # Only nag when release-plz actually published a crate this run.
-          if [ -z "$RELEASES" ] || [ "$RELEASES" = "[]" ] || [ "$RELEASES" = "null" ]; then
-            echo "No crate published this run; nothing to tag."
-            exit 0
-          fi
-          tags=$(printf '%s' "$RELEASES" | jq -r '.[] | "v\(.version)"')
-          {
-            echo "### 🏷️ Push the release tag to cut the GitHub release"
-            echo ""
-            echo "Published to crates.io. cargo-dist's binary release is **not**"
-            echo "automatic — push the tag locally to trigger \`release.yml\`:"
-            echo ""
-            echo '```bash'
-            echo "git checkout master && git pull"
-            printf '%s\n' "$tags" | while IFS= read -r tag; do
-              [ -n "$tag" ] && echo "git tag ${tag} && git push origin ${tag}"
-            done
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          joined=$(printf '%s' "$tags" | paste -sd', ' -)
-          echo "::notice title=Push the release tag::Published to crates.io (${joined}). Run: git tag <version> && git push origin <version> to cut the GitHub release."
-
-  # Opens/updates the "release" PR that bumps the version and updates CHANGELOG.md.
-  # Runs on the default GITHUB_TOKEN — no PAT. This relies on the repo setting
-  # "Allow GitHub Actions to create and approve pull requests" being enabled.
-  release-plz-pr:
-    name: Release-plz PR
-    runs-on: ubuntu-latest
-    if: github.repository_owner == 'justin13888'
     permissions:
       contents: write
       pull-requests: write
     concurrency:
-      group: release-plz-${{ github.ref }}
+      group: release-plz-pr
       cancel-in-progress: false
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-      - name: Run release-plz
-        uses: release-plz/action@v0.5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: release-plz/action@v0.5
         with:
           command: release-pr
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  prepare:
+    name: Validate release identity and retry state
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate version, tag, and release commit
+        id: release
+        shell: bash
+        env:
+          DISPATCH_TAG: ${{ inputs.release-tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(cargo metadata --no-deps --format-version=1 |
+            jq -r '.packages[] | select(.name == "purrfetch") | .version')
+          tag=${DISPATCH_TAG:-v${version}}
+          commit=$(git rev-parse HEAD)
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Only stable vMAJOR.MINOR.PATCH tags are supported: $tag"
+            exit 1
+          fi
+          if [ "${tag#v}" != "$version" ]; then
+            echo "::error::Cargo version $version does not match release tag $tag"
+            exit 1
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/master" ]; then
+              echo "::error::Release promotion must be dispatched from master"
+              exit 1
+            fi
+            git fetch --no-tags origin master
+            master_commit=$(git rev-parse origin/master)
+            if [ "$commit" != "$master_commit" ]; then
+              echo "::error::Release commit $commit is not the current master commit $master_commit"
+              exit 1
+            fi
+
+            git fetch --tags origin
+            if git show-ref --verify --quiet "refs/tags/$tag"; then
+              tagged_commit=$(git rev-list -n 1 "$tag")
+              if [ "$tagged_commit" != "$commit" ]; then
+                echo "::error::$tag already points to $tagged_commit, not $commit"
+                exit 1
+              fi
+            fi
+
+            if gh release view "$tag" --json isDraft >/dev/null 2>&1; then
+              state=$(gh release view "$tag" --json isDraft --jq \
+                'if .isDraft then "draft" else "published" end')
+              echo "Retrying with an existing $state GitHub release for $tag"
+            fi
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
+
+  publisher-prerequisites:
+    name: Validate publisher credentials
+    needs: prepare
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require and validate Homebrew tap access
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is required"
+            exit 1
+          fi
+          permission=$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $HOMEBREW_TAP_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/justin13888/homebrew-tap |
+            jq -r '.permissions.push // false')
+          if [ "$permission" != "true" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN cannot push to justin13888/homebrew-tap"
+            exit 1
+          fi
+      - name: Validate crates.io Trusted Publishing
+        uses: rust-lang/crates-io-auth-action@v1
+
+  package-preflight:
+    name: Cargo and Mise preflight
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Package and publish dry-run
+        run: |
+          cargo package --locked
+          cargo publish --dry-run --locked
+      - uses: jdx/mise-action@v3
+        with:
+          install: false
+          cache: false
+      - name: Validate supported Mise specifications
+        working-directory: ${{ runner.temp }}
+        run: |
+          mise use --dry-run 'cargo:purrfetch@latest'
+          mise use --dry-run \
+            'cargo:https://github.com/justin13888/purrfetch@branch:master'
+
+  build-native:
+    name: Build and smoke-test ${{ matrix.target }}
+    needs: prepare
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Install cargo-dist
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" |
+            sh
+      - name: Install cargo-dist
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          irm "https://github.com/axodotdev/cargo-dist/releases/download/v${env:DIST_VERSION}/cargo-dist-installer.ps1" |
+            iex
+      - name: Build native archive and installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          dist build \
+            --artifacts=local \
+            --target="${{ matrix.target }}" \
+            --tag="${{ needs.prepare.outputs.tag }}" \
+            --output-format=json > dist-manifest.json
+          cp dist-manifest.json \
+            "target/distrib/${{ matrix.target }}-dist-manifest.json"
+      - name: Verify archive checksum and native binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd target/distrib
+          shasum -a 256 -c \
+            "purrfetch-${{ matrix.target }}.tar.xz.sha256"
+          "./purrfetch-${{ matrix.target }}/purr" --version |
+            grep -F "${{ needs.prepare.outputs.version }}"
+      - name: Verify ZIP checksum and native binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $checksum = Get-Content `
+            "target/distrib/purrfetch-${{ matrix.target }}.zip.sha256"
+          $parts = $checksum.Trim().Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+          $expected = $parts[0].ToLowerInvariant()
+          $actual = (Get-FileHash `
+            "target/distrib/purrfetch-${{ matrix.target }}.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "ZIP checksum mismatch: expected $expected, got $actual"
+          }
+          $output = & "target/distrib/purrfetch-${{ matrix.target }}/purr.exe" --version
+          if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
+            throw "Unexpected version output: $output"
+          }
+          if (-not (Test-Path "target/distrib/purrfetch-${{ matrix.target }}/purr.ps1")) {
+            throw "PowerShell completion is missing from the ZIP"
+          }
+      - name: Silently install and smoke-test MSI
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $msi = (Resolve-Path `
+            "target/distrib/purrfetch-${{ matrix.target }}.msi").Path
+          try {
+            $install = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
+              "/i `"$msi`" /qn /norestart"
+            if ($install.ExitCode -notin @(0, 3010)) {
+              throw "MSI installation failed with exit code $($install.ExitCode)"
+            }
+            $binary = "${env:ProgramFiles}\purrfetch\bin\purr.exe"
+            $completion = "${env:ProgramFiles}\purrfetch\bin\purr.ps1"
+            $output = & $binary --version
+            if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
+              throw "Unexpected MSI version output: $output"
+            }
+            if (-not (Test-Path $completion)) {
+              throw "PowerShell completion is missing from the MSI"
+            }
+          } finally {
+            if (Test-Path $msi) {
+              $uninstall = Start-Process msiexec.exe -Wait -PassThru -ArgumentList `
+                "/x `"$msi`" /qn /norestart"
+              if ($uninstall.ExitCode -notin @(0, 1605, 3010)) {
+                throw "MSI uninstall failed with exit code $($uninstall.ExitCode)"
+              }
+            }
+          }
+      - name: Collect upload paths
+        id: artifacts
+        shell: bash
+        run: |
+          {
+            echo "paths<<EOF"
+            dist print-upload-files-from-manifest --manifest dist-manifest.json
+            echo "target/distrib/${{ matrix.target }}-dist-manifest.json"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-local-${{ matrix.target }}
+          path: ${{ steps.artifacts.outputs.paths }}
+          if-no-files-found: error
+
+  build-global:
+    name: Build and smoke-test global installers
+    needs: [prepare, build-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-local-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Install cargo-dist
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" |
+            sh
+      - name: Build installers, checksums, and Homebrew formula
+        run: |
+          set -euo pipefail
+          dist build \
+            --artifacts=global \
+            --tag="${{ needs.prepare.outputs.tag }}" \
+            --output-format=json > dist-manifest.json
+          cp dist-manifest.json target/distrib/global-dist-manifest.json
+          python3 scripts/patch-homebrew-formula.py target/distrib/purr.rb
+          (
+            cd target/distrib
+            for checksum in *.sha256; do
+              sha256sum -c "$checksum"
+            done
+            sha256sum -c sha256.sum
+          )
+      - name: Exercise shell installer from local artifacts
+        run: |
+          set -euo pipefail
+          install_dir=$(mktemp -d)
+          python3 -m http.server 8765 --directory target/distrib \
+            >"$RUNNER_TEMP/purrfetch-http.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          curl --retry 10 --retry-delay 1 --retry-connrefused --fail --silent \
+            http://127.0.0.1:8765/purrfetch-installer.sh >/dev/null
+          PURRFETCH_DOWNLOAD_URL=http://127.0.0.1:8765 \
+            PURRFETCH_UNMANAGED_INSTALL="$install_dir" \
+            sh target/distrib/purrfetch-installer.sh
+          "$install_dir/purr" --version |
+            grep -F "${{ needs.prepare.outputs.version }}"
+      - name: Collect upload paths
+        id: artifacts
+        run: |
+          {
+            echo "paths<<EOF"
+            dist print-upload-files-from-manifest --manifest dist-manifest.json
+            echo "target/distrib/global-dist-manifest.json"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-global
+          path: ${{ steps.artifacts.outputs.paths }}
+          if-no-files-found: error
+
+  powershell-installer:
+    name: Smoke-test PowerShell installer
+    needs: [prepare, build-native, build-global]
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Exercise PowerShell installer from local artifacts
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:RUNNER_TEMP "purrfetch-powershell"
+          $server = Start-Process python -PassThru -ArgumentList `
+            "-m", "http.server", "8765", "--directory", "target/distrib"
+          try {
+            for ($attempt = 0; $attempt -lt 10; $attempt++) {
+              try {
+                Invoke-WebRequest "http://127.0.0.1:8765/purrfetch-installer.ps1" `
+                  -UseBasicParsing | Out-Null
+                break
+              } catch {
+                if ($attempt -eq 9) { throw }
+                Start-Sleep -Seconds 1
+              }
+            }
+            $env:PURRFETCH_DOWNLOAD_URL = "http://127.0.0.1:8765"
+            $env:PURRFETCH_UNMANAGED_INSTALL = $installDir
+            & "target/distrib/purrfetch-installer.ps1"
+            $output = & (Join-Path $installDir "purr.exe") --version
+            if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
+              throw "Unexpected installer version output: $output"
+            }
+          } finally {
+            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
+
+  homebrew:
+    name: Validate Homebrew on ${{ matrix.name }}
+    needs: [prepare, build-native, build-global]
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            runner: ubuntu-22.04
+          - name: macOS
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: target/distrib
+          merge-multiple: true
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Install man on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes man-db
+      - name: Install and validate final formula
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if brew list --versions purr >/dev/null 2>&1; then
+            echo "::error::The Homebrew test runner already has purr installed"
+            exit 1
+          fi
+          brew tap-new --no-git purrfetch/preflight
+          tap_dir=$(brew --repository purrfetch/preflight)
+          cp target/distrib/purr.rb "$tap_dir/Formula/purr.rb"
+          FORMULA="$tap_dir/Formula/purr.rb" python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          formula = Path(os.environ["FORMULA"])
+          source = formula.read_text(encoding="utf-8")
+          remote = (
+              "https://github.com/justin13888/purrfetch/releases/download/"
+              f"{os.environ['RELEASE_TAG']}/"
+          )
+          local = Path("target/distrib").resolve().as_uri() + "/"
+          if source.count(remote) != 4:
+              raise SystemExit("cargo-dist formula URL layout changed")
+          formula.write_text(source.replace(remote, local), encoding="utf-8")
+          PY
+
+          ruby -c "$tap_dir/Formula/purr.rb"
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install purrfetch/preflight/purr
+          purr --version | grep -F "$RELEASE_VERSION"
+
+          prefix=$(brew --prefix)
+          test -f "$prefix/etc/bash_completion.d/purr"
+          test -f "$prefix/share/zsh/site-functions/_purr"
+          test -f "$prefix/share/fish/vendor_completions.d/purr.fish"
+          test -f "$prefix/share/man/man1/purr.1"
+          MANPATH="$prefix/share/man" MANPAGER=cat man purr >/dev/null
+          brew uninstall purr
+          brew untap purrfetch/preflight
+
+  promotion:
+    name: Promote all supported channels
+    needs:
+      - prepare
+      - publisher-prerequisites
+      - package-preflight
+      - build-native
+      - build-global
+      - powershell-installer
+      - homebrew
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.prepare.result == 'success' &&
+      needs.publisher-prerequisites.result == 'success' &&
+      needs.package-preflight.result == 'success' &&
+      needs.build-native.result == 'success' &&
+      needs.build-global.result == 'success' &&
+      needs.powershell-installer.result == 'success' &&
+      needs.homebrew.result == 'success'
+    concurrency:
+      group: purrfetch-release-promotion
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+      RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          path: target/distrib
+          merge-multiple: true
+      - name: Create or validate exact release tag
+        run: |
+          set -euo pipefail
+          git fetch --tags origin
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            tagged_commit=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [ "$tagged_commit" != "$RELEASE_COMMIT" ]; then
+              echo "::error::$RELEASE_TAG points to $tagged_commit, not $RELEASE_COMMIT"
+              exit 1
+            fi
+          else
+            git tag "$RELEASE_TAG" "$RELEASE_COMMIT"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+      - name: Create or validate draft GitHub release and artifacts
+        id: github-release
+        run: |
+          set -euo pipefail
+          dist plan --tag="$RELEASE_TAG" --output-format=json > "$RUNNER_TEMP/plan.json"
+          jq -r '.releases[].artifacts[]' "$RUNNER_TEMP/plan.json" |
+            sort -u > "$RUNNER_TEMP/expected-assets.txt"
+          jq -r '.announcement_github_body' "$RUNNER_TEMP/plan.json" \
+            > "$RUNNER_TEMP/release-notes.md"
+          title=$(jq -r '.announcement_title' "$RUNNER_TEMP/plan.json")
+
+          while IFS= read -r asset; do
+            test -f "target/distrib/$asset" || {
+              echo "::error::Missing release artifact: $asset"
+              exit 1
+            }
+          done < "$RUNNER_TEMP/expected-assets.txt"
+
+          published=false
+          if gh release view "$RELEASE_TAG" --json isDraft >/dev/null 2>&1; then
+            if [ "$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')" = false ]; then
+              published=true
+            else
+              gh release edit "$RELEASE_TAG" --draft \
+                --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md"
+            fi
+          else
+            gh release create "$RELEASE_TAG" --draft --verify-tag \
+              --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+
+          if [ "$published" = false ]; then
+            mapfile -t assets < "$RUNNER_TEMP/expected-assets.txt"
+            files=()
+            for asset in "${assets[@]}"; do
+              files+=("target/distrib/$asset")
+            done
+            gh release upload "$RELEASE_TAG" --clobber "${files[@]}"
+          fi
+
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
+            sort -u > "$RUNNER_TEMP/actual-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-assets.txt" "$RUNNER_TEMP/actual-assets.txt"
+
+          download_dir=$(mktemp -d)
+          while IFS= read -r asset; do
+            gh release download "$RELEASE_TAG" --pattern "$asset" --dir "$download_dir"
+            cmp "target/distrib/$asset" "$download_dir/$asset"
+          done < "$RUNNER_TEMP/expected-assets.txt"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+      - name: Authenticate with crates.io
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish or verify exact crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+        run: |
+          set -euo pipefail
+          cargo package --locked
+          crate="target/package/purrfetch-${RELEASE_VERSION}.crate"
+          expected=$(sha256sum "$crate" | cut -d' ' -f1)
+          api="https://crates.io/api/v1/crates/purrfetch/${RELEASE_VERSION}"
+          user_agent="purrfetch release workflow (https://github.com/justin13888/purrfetch)"
+
+          if response=$(curl --fail --silent --show-error \
+            -A "$user_agent" "$api"); then
+            actual=$(jq -r '.version.checksum' <<<"$response")
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::crates.io $RELEASE_VERSION has checksum $actual; expected $expected"
+              exit 1
+            fi
+            echo "crates.io already has the exact crate"
+          else
+            cargo publish --locked
+          fi
+
+          for attempt in {1..18}; do
+            if response=$(curl --fail --silent --show-error \
+              -A "$user_agent" "$api" 2>/dev/null); then
+              actual=$(jq -r '.version.checksum' <<<"$response")
+              [ "$actual" = "$expected" ] && exit 0
+            fi
+            echo "Waiting for crates.io propagation ($attempt/18)"
+            sleep 10
+          done
+          echo "::error::crates.io did not expose the expected crate checksum"
+          exit 1
+      - name: Publish or verify exact Homebrew formula
+        uses: actions/checkout@v6
+        with:
+          repository: justin13888/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Update Homebrew tap
+        run: |
+          set -euo pipefail
+          destination=homebrew-tap/Formula/purr.rb
+          source=target/distrib/purr.rb
+          current_version=""
+          if [ -f "$destination" ]; then
+            current_version=$(sed -n 's/^  version "\(.*\)"/\1/p' "$destination")
+          fi
+
+          if [ "$current_version" = "$RELEASE_VERSION" ]; then
+            cmp "$source" "$destination" || {
+              echo "::error::Homebrew already has $RELEASE_VERSION with different content"
+              exit 1
+            }
+            echo "Homebrew already has the exact formula"
+          else
+            if [ -n "$current_version" ] &&
+              [ "$(printf '%s\n%s\n' "$current_version" "$RELEASE_VERSION" |
+                sort -V | tail -n 1)" != "$RELEASE_VERSION" ]; then
+              echo "::error::Refusing to replace newer Homebrew version $current_version"
+              exit 1
+            fi
+            cp "$source" "$destination"
+            (
+              cd homebrew-tap
+              git config user.name "github-actions[bot]"
+              git config user.email \
+                "41898282+github-actions[bot]@users.noreply.github.com"
+              git add Formula/purr.rb
+              git commit -m "purr: update to ${RELEASE_VERSION}"
+              git push
+            )
+          fi
+      - name: Publish GitHub release
+        run: |
+          title=$(jq -r '.announcement_title' "$RUNNER_TEMP/plan.json")
+          gh release edit "$RELEASE_TAG" --draft=false --latest \
+            --title "$title" --notes-file "$RUNNER_TEMP/release-notes.md"
+      - name: Confirm all supported destinations
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag_commit=$(git rev-list -n 1 "$RELEASE_TAG")
+          [ "$tag_commit" = "$RELEASE_COMMIT" ]
+
+          draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')
+          [ "$draft" = false ]
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
+            sort -u > "$RUNNER_TEMP/final-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-assets.txt" "$RUNNER_TEMP/final-assets.txt"
+
+          crate="target/package/purrfetch-${RELEASE_VERSION}.crate"
+          expected=$(sha256sum "$crate" | cut -d' ' -f1)
+          actual=$(curl --fail --silent --show-error \
+            -A "purrfetch release workflow (https://github.com/justin13888/purrfetch)" \
+            "https://crates.io/api/v1/crates/purrfetch/${RELEASE_VERSION}" |
+            jq -r '.version.checksum')
+          [ "$actual" = "$expected" ]
+
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $HOMEBREW_TAP_TOKEN" \
+            -H "Accept: application/vnd.github.raw+json" \
+            https://api.github.com/repos/justin13888/homebrew-tap/contents/Formula/purr.rb \
+            > "$RUNNER_TEMP/published-purr.rb"
+          cmp target/distrib/purr.rb "$RUNNER_TEMP/published-purr.rb"
+          grep -F "  version \"$RELEASE_VERSION\"" "$RUNNER_TEMP/published-purr.rb"

@@ -1,6 +1,6 @@
 # Print an optspec for argparse to handle cmd's options that are independent of any subcommand.
 function __fish_purr_global_optspecs
-	string join \n verbose c/config= no-config all example= n/neofetch json ascii_distro= ascii_colors= no_ascii_bold L/logo off backend= source= separator= no_bold underline_char= title_fqdn colors= stdout memory_unit= uptime_shorthand= cpu_cores= h/help V/version
+	string join \n verbose c/config= no-config all n/neofetch json ascii_distro= ascii_colors= no_ascii_bold L/logo off backend= source= separator= no_bold underline_char= title_fqdn colors= stdout memory_unit= uptime_shorthand= cpu_cores= h/help V/version
 end
 
 function __fish_purr_needs_command
@@ -25,14 +25,6 @@ function __fish_purr_using_subcommand
 end
 
 complete -c purr -n "__fish_purr_needs_command" -s c -l config -d 'Path to a custom config file' -r -F
-complete -c purr -n "__fish_purr_needs_command" -l example -d 'Render curated example data for a preset instead of live system info' -r -f -a "fedora-desktop\t'Fedora Workstation desktop (the README hero)'
-arch\t''
-nixos\t''
-gentoo\t''
-debian-server\t''
-ubuntu\t''
-macos\t''
-void\t''"
 complete -c purr -n "__fish_purr_needs_command" -l ascii_distro -d 'Force a specific distro logo (e.g. "arch")' -r
 complete -c purr -n "__fish_purr_needs_command" -l ascii_colors -d 'Override logo colours (space/comma list, e.g. "4 6 1")' -r
 complete -c purr -n "__fish_purr_needs_command" -l backend -d 'Logo backend: ascii or kitty' -r
@@ -54,7 +46,7 @@ complete -c purr -n "__fish_purr_needs_command" -l off -d 'Hide the logo'
 complete -c purr -n "__fish_purr_needs_command" -l no_bold -d 'Don\'t bold the title and labels'
 complete -c purr -n "__fish_purr_needs_command" -l title_fqdn -d 'Show the fully-qualified hostname'
 complete -c purr -n "__fish_purr_needs_command" -l stdout -d 'Pipe-friendly output: disable colour'
-complete -c purr -n "__fish_purr_needs_command" -s h -l help -d 'Print help (see more with \'--help\')'
+complete -c purr -n "__fish_purr_needs_command" -s h -l help -d 'Print help'
 complete -c purr -n "__fish_purr_needs_command" -s V -l version -d 'Print version'
 complete -c purr -n "__fish_purr_needs_command" -f -a "generate" -d 'Generate a new config file'
 complete -c purr -n "__fish_purr_needs_command" -f -a "config-path" -d 'Return default config file path'

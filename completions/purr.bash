@@ -41,7 +41,7 @@ _purr() {
 
     case "${cmd}" in
         purr)
-            opts="-c -n -L -h -V --verbose --config --no-config --all --example --neofetch --json --ascii_distro --ascii_colors --no_ascii_bold --logo --off --backend --source --separator --no_bold --underline_char --title_fqdn --colors --stdout --memory_unit --uptime_shorthand --cpu_cores --help --version generate config-path help"
+            opts="-c -n -L -h -V --verbose --config --no-config --all --neofetch --json --ascii_distro --ascii_colors --no_ascii_bold --logo --off --backend --source --separator --no_bold --underline_char --title_fqdn --colors --stdout --memory_unit --uptime_shorthand --cpu_cores --help --version generate config-path help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -53,10 +53,6 @@ _purr() {
                     ;;
                 -c)
                     COMPREPLY=($(compgen -f "${cur}"))
-                    return 0
-                    ;;
-                --example)
-                    COMPREPLY=($(compgen -W "fedora-desktop arch nixos gentoo debian-server ubuntu macos void" -- "${cur}"))
                     return 0
                     ;;
                 --ascii_distro)
