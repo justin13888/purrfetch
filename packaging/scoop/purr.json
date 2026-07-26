@@ -23,5 +23,5 @@
             }
         }
     },
-    "notes": "PowerShell completions ship in the archive as purr.ps1 — dot-source it from your $PROFILE to enable them."
+    "notes": "Dormant, potentially stale prototype; not an official installation channel. PowerShell completions ship in the archive as purr.ps1."
 }

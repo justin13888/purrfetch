@@ -1,5 +1,11 @@
 # Operating-system support
 
+This document covers runtime detection and the logos compiled into `purr`. It
+does **not** indicate that a distribution-specific installation channel is
+published or release-tested. See the [installation matrix](../README.md#installation)
+for supported user installation paths and the
+[packaging policy](../packaging/README.md) for maintainer status.
+
 purr targets the operating systems and distributions that are **mainstream or
 still actively maintained**. This is a deliberate subset of [neofetch's
 operating-system list][ns]: neofetch carried explicit detection/art for 150+

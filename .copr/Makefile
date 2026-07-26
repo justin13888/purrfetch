@@ -1,3 +1,6 @@
+# DORMANT PROTOTYPE: deferred pending demand and end-to-end validation. This
+# recipe may be stale and is not part of release automation.
+#
 # Produces a source RPM for Fedora COPR from the current git checkout.
 #
 # COPR's "Custom" / SCM build method runs `make -f .copr/Makefile srpm

@@ -26,6 +26,7 @@ pub struct Cli {
     /// Use the all-probes preset.
     #[clap(long)]
     pub all: bool,
+    #[cfg(feature = "example")]
     /// Render curated example data for a preset instead of live system info.
     #[clap(
         long,
@@ -125,8 +126,10 @@ pub struct GenerateCommandArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "example")]
     use crate::demo::DemoPresetId;
 
+    #[cfg(feature = "example")]
     #[test]
     fn example_flag_parses() {
         let cli = Cli::try_parse_from(["purr", "--example", "arch"]).unwrap();
@@ -141,5 +144,11 @@ mod tests {
 
         let cli = Cli::try_parse_from(["purr"]).unwrap();
         assert_eq!(cli.example, None);
+    }
+
+    #[cfg(not(feature = "example"))]
+    #[test]
+    fn example_flag_is_not_available_by_default() {
+        assert!(Cli::try_parse_from(["purr", "--example"]).is_err());
     }
 }

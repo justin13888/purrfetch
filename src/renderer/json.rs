@@ -2,9 +2,10 @@ use std::io::Write;
 
 use serde_json::{Value, json};
 
+#[cfg(feature = "example")]
+use crate::demo::DemoPreset;
 use crate::{
     config::JsonRendererConfig,
-    demo::DemoPreset,
     probe::{ProbeList, ProbeResultValue, general_readout},
 };
 
@@ -14,6 +15,7 @@ use super::{RendererError, execute_probes_streaming};
 pub struct JsonRenderer {
     config: JsonRendererConfig,
     probe_list: ProbeList,
+    #[cfg(feature = "example")]
     /// `Some` when rendering curated example data (`--example`).
     demo: Option<&'static DemoPreset>,
 }
@@ -28,11 +30,13 @@ impl JsonRenderer {
         Self {
             config,
             probe_list,
+            #[cfg(feature = "example")]
             demo: None,
         }
     }
 
     /// Render `preset`'s curated data instead of live probes.
+    #[cfg(feature = "example")]
     pub fn new_demo(mut config: JsonRendererConfig, preset: &'static DemoPreset) -> Self {
         crate::demo::normalize_probes(&mut config.probes);
         let probe_list = config
@@ -48,8 +52,6 @@ impl JsonRenderer {
     }
 
     pub fn draw(&self) -> Result<(), RendererError> {
-        use libmacchina::traits::GeneralReadout as _;
-
         let probes = &self.config.probes;
         let mut entries: Vec<Value> = vec![Value::Null; probes.len()];
         execute_probes_streaming(&self.probe_list, |index, label, result| {
@@ -69,19 +71,16 @@ impl JsonRenderer {
             };
         });
 
+        #[cfg(feature = "example")]
         let (distro, host) = match self.demo {
             Some(p) => (
                 Some(p.distro.to_string()),
                 Some(format!("{}@{}", p.username, p.hostname)),
             ),
-            None => (
-                general_readout().distribution().ok(),
-                match (general_readout().username(), general_readout().hostname()) {
-                    (Ok(u), Ok(h)) => Some(format!("{u}@{h}")),
-                    _ => None,
-                },
-            ),
+            None => live_identity(),
         };
+        #[cfg(not(feature = "example"))]
+        let (distro, host) = live_identity();
 
         let out = json!({
             "distro": distro,
@@ -94,4 +93,16 @@ impl JsonRenderer {
         writeln!(w, "{s}")?;
         Ok(())
     }
+}
+
+fn live_identity() -> (Option<String>, Option<String>) {
+    use libmacchina::traits::GeneralReadout as _;
+
+    (
+        general_readout().distribution().ok(),
+        match (general_readout().username(), general_readout().hostname()) {
+            (Ok(u), Ok(h)) => Some(format!("{u}@{h}")),
+            _ => None,
+        },
+    )
 }

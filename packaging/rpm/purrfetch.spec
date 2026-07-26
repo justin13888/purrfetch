@@ -1,3 +1,6 @@
+# DORMANT PROTOTYPE: deferred pending demand and end-to-end validation.
+# This recipe may be stale and is not part of release automation.
+
 %global bin_name purr
 
 Name:           purrfetch

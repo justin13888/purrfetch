@@ -31,7 +31,7 @@ fi
 
 # --- Build purr in release mode so the screenshots reflect current output ---
 echo "Building purr (release)..."
-cargo build --release --manifest-path "$REPO_ROOT/Cargo.toml"
+cargo build --release --features example --manifest-path "$REPO_ROOT/Cargo.toml"
 PURR="$REPO_ROOT/target/release/purr"
 
 # The hero preset renders to assets/purr.svg; the rest go to assets/examples/.
