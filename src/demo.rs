@@ -25,11 +25,12 @@ pub enum DemoPresetId {
     DebianServer,
     Ubuntu,
     Macos,
+    Windows,
     Void,
 }
 
 impl DemoPresetId {
-    pub const ALL: [DemoPresetId; 8] = [
+    pub const ALL: [DemoPresetId; 9] = [
         Self::FedoraDesktop,
         Self::Arch,
         Self::Nixos,
@@ -37,6 +38,7 @@ impl DemoPresetId {
         Self::DebianServer,
         Self::Ubuntu,
         Self::Macos,
+        Self::Windows,
         Self::Void,
     ];
 
@@ -49,6 +51,7 @@ impl DemoPresetId {
             Self::DebianServer => &DEBIAN_SERVER,
             Self::Ubuntu => &UBUNTU,
             Self::Macos => &MACOS,
+            Self::Windows => &WINDOWS,
             Self::Void => &VOID,
         }
     }
@@ -410,6 +413,36 @@ pub static MACOS: DemoPreset = DemoPreset {
     song: None,
     local_ip: Some("192.168.1.87"),
     locale: Some("en_US.UTF-8"),
+};
+
+/// A Windows 11 gaming laptop.
+pub static WINDOWS: DemoPreset = DemoPreset {
+    username: "alex",
+    hostname: "aurora",
+    distro: "Windows",
+    os: "Windows 11 Pro x86_64",
+    model: Some(("ASUS", "ROG Zephyrus G16 GU605")),
+    kernel: "10.0.26100",
+    uptime_secs: 5 * 3600 + 31 * 60,
+    packages: &[("winget", 83)],
+    shell: Some(("PowerShell", Some("7.5.2"))),
+    resolution: Some("2560x1600"),
+    de: Some(("Fluent", None)),
+    wm: Some("Desktop Window Manager"),
+    wm_theme: Some("Dark"),
+    theme: Some("Windows 11 Dark"),
+    icons: Some("Windows 11"),
+    cursor: Some("Windows Default"),
+    terminal: Some("Windows Terminal"),
+    terminal_font: Some("Cascadia Mono 12"),
+    cpu: "Intel Ultra 9 185H (22) @ 5.10GHz",
+    gpus: &["NVIDIA GeForce RTX 4070 Laptop GPU"],
+    memory_kib: (mib_kib(10192), mib_kib(32 * 1024)),
+    disk: Some((r"C:\", "NTFS", gib(384), gib(952))),
+    battery: Some(72),
+    song: None,
+    local_ip: Some("192.168.1.54"),
+    locale: Some("en-CA"),
 };
 
 pub static VOID: DemoPreset = DemoPreset {
