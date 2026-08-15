@@ -246,7 +246,9 @@ jobs:
           if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
             throw "Unexpected version output: $output"
           }
-          if (-not (Test-Path "target/distrib/purrfetch-${{ matrix.target }}/purr.ps1")) {
+          # `include` bundles the completions/ directory as-is, so the archive keeps
+          # the completion at completions/purr.ps1 rather than at its root.
+          if (-not (Test-Path "target/distrib/purrfetch-${{ matrix.target }}/completions/purr.ps1")) {
             throw "PowerShell completion is missing from the ZIP"
           }
       - name: Silently install and smoke-test MSI
