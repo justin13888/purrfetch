@@ -240,7 +240,9 @@ jobs:
           if ($actual -ne $expected) {
             throw "ZIP checksum mismatch: expected $expected, got $actual"
           }
-          $output = & "target/distrib/purrfetch-${{ matrix.target }}/purr.exe" --version
+          # `purr --version` is multi-line, so pipe through Out-String: `&` yields a
+          # string[] and `-notmatch` filters arrays instead of returning a boolean.
+          $output = & "target/distrib/purrfetch-${{ matrix.target }}/purr.exe" --version | Out-String
           if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
             throw "Unexpected version output: $output"
           }
@@ -261,7 +263,7 @@ jobs:
             }
             $binary = "${env:ProgramFiles}\purrfetch\bin\purr.exe"
             $completion = "${env:ProgramFiles}\purrfetch\bin\purr.ps1"
-            $output = & $binary --version
+            $output = & $binary --version | Out-String
             if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
               throw "Unexpected MSI version output: $output"
             }
@@ -391,7 +393,7 @@ jobs:
             $env:PURRFETCH_DOWNLOAD_URL = "http://127.0.0.1:8765"
             $env:PURRFETCH_UNMANAGED_INSTALL = $installDir
             & "target/distrib/purrfetch-installer.ps1"
-            $output = & (Join-Path $installDir "purr.exe") --version
+            $output = & (Join-Path $installDir "purr.exe") --version | Out-String
             if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
               throw "Unexpected installer version output: $output"
             }
