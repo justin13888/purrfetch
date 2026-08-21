@@ -279,7 +279,13 @@ This project uses [hk](https://hk.jdx.dev/) (configured in `hk.pkl`) to manage g
 
 ### Commit messages
 
-Commits must follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced by `convco` (commit-msg hook, pre-push, and CI). Version bumps, the `CHANGELOG.md`, and releases are automated from these messages by [release-plz](https://release-plz.dev/).
+Commits must follow [Conventional Commits](https://www.conventionalcommits.org/) — enforced by `convco` (commit-msg hook, pre-push, and CI). Version bumps and the `CHANGELOG.md` are derived from these messages by [release-plz](https://release-plz.dev/).
+
+### Releasing
+
+Releasing is two steps: release-plz opens a version-bump PR automatically, then a maintainer manually dispatches the promotion run that tags and publishes. Merging the release PR alone publishes nothing.
+
+- [`docs/releasing.md`](docs/releasing.md) — the dispatch step, the gates promotion enforces, and how to retry a failed release
 
 ### Benchmarking
 
