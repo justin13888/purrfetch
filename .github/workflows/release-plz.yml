@@ -514,6 +514,11 @@ jobs:
           pattern: dist-*
           path: target/distrib
           merge-multiple: true
+      - name: Install cargo-dist
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            "https://github.com/axodotdev/cargo-dist/releases/download/v${DIST_VERSION}/cargo-dist-installer.sh" |
+            sh
       - name: Create or validate exact release tag
         run: |
           set -euo pipefail
