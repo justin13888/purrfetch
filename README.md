@@ -22,7 +22,7 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 
 [neofetch](https://github.com/dylanaraps/neofetch) is archived and no longer maintained. If its look is part of your terminal-startup ritual — the thing you see every time a shell opens — purr keeps exactly that: the same fields, the same `${c1}`..`${c6}` ASCII, the same vibe. The difference is it's **instant** instead of the visible pause neofetch takes to start. It's an actively maintained [drop-in successor for Linux, macOS, and Windows](#installation).
 
-- **Fast**: probes run in parallel on native Rust; a typical run finishes in ~20 ms — roughly **91× faster** than neofetch's ~2 s
+- **Fast**: probes run in parallel on native Rust; a typical run finishes in ~4 ms on Linux — on par with fastfetch and **hundreds of times faster** than neofetch's ~2 s ([benchmarks](docs/benchmarks.md))
 - **Cross-platform**: Linux, macOS, and Windows
 - **neofetch-compatible**: matches neofetch's commonly-used info fields, styling, configuration, and `${c1}`..`${c6}` ASCII format. The [parity matrix](docs/neofetch-parity.md) records exactly what's covered and what's intentionally deferred
 - **Highly customizable**: TOML config plus CLI flags for separators, colours, per-field options, color blocks, ASCII overrides, JSON output, and a Kitty image backend
@@ -55,8 +55,9 @@ the wait or the abandonware.** If you're choosing a fetch tool:
 - **[neofetch](https://github.com/dylanaraps/neofetch)** — the original, archived
   since 2024. purr replicates its default look, fields, flags, and `${c1}`..`${c6}`
   ASCII format (the [parity matrix](docs/neofetch-parity.md) tracks every field),
-  while starting in ~20 ms instead of ~2 s. If you want neofetch, maintained and
-  fast, that's purr.
+  while starting in milliseconds instead of ~2 s
+  ([benchmarks](docs/benchmarks.md)). If you want neofetch, maintained and fast,
+  that's purr.
 - **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** — an excellent,
   very featureful neofetch successor in C with its own JSONC configuration and a
   broader module set. purr trades that breadth for neofetch-style TOML/flag
@@ -291,10 +292,12 @@ Releasing is two steps: release-plz opens a version-bump PR automatically, then 
 
 #### End-to-end comparison (hyperfine)
 
-Requires [hyperfine](https://github.com/sharkdp/hyperfine). The portable runner
-builds purr in release mode and compares it with every available supported
-competitor: fastfetch, macchina, neofetch, neowofetch, screenFetch, and
-NerdFetch. Missing or unusable tools produce a coloured warning and are skipped.
+`mise run bench-compare` provisions pinned
+[hyperfine](https://github.com/sharkdp/hyperfine), fastfetch, and hyfetch (for
+`neowofetch`) for the task; the plain `cargo run` form needs hyperfine on
+`PATH`. The portable runner builds purr in release mode and compares it with
+every available supported competitor: fastfetch, macchina, neofetch, neowofetch,
+screenFetch, and NerdFetch. Missing or unusable tools produce a coloured warning and are skipped.
 
 The primary performance contract with
 [fastfetch](https://github.com/fastfetch-cli/fastfetch) compares clean, non-TTY
@@ -309,13 +312,20 @@ mise run bench-compare
 The benchmark disables user configuration where each tool supports it, drains
 the complete rendered output through a pipe, warms each command five times, and
 records at least 20 measured runs. This is process-completion latency, not
-time-to-first-paint or an internal probe metric.
+time-to-first-paint. The runner then builds purr with `--features profile` into
+`target/bench-profile` and aggregates cold per-span timings (median/p95 of each
+probe, readout init, and subprocess) over 20 runs, and prints a report-only
+budget verdict: purr's median must beat fastfetch's (hard) and stay ≤ 25 ms
+(soft).
 
 Results are written to the ignored `bench-results.json` and
 `bench-results.md` files. Both include the host and tool versions, exact
-commands, sampling policy, skipped-tool reasons, and hyperfine measurements so
-results from different operating systems and machines can be interpreted in
-context.
+commands, sampling policy, skipped-tool reasons, hyperfine measurements, peak
+RSS (hyperfine 2+), purr's binary size, span timings, and the verdict so results
+from different operating systems and machines can be interpreted in context.
+Reference results per OS, budgets, and method are recorded in
+[`docs/benchmarks.md`](docs/benchmarks.md); the `Benchmark` workflow re-runs the
+comparison weekly on Linux and macOS runners as an indicative, non-blocking report.
 
 #### Probe microbenchmarks (criterion)
 
