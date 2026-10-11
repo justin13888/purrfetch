@@ -67,6 +67,9 @@ run = "cargo run --"
 description = "Benchmark purr against available fetch tools end to end"
 run = "cargo run --release --example bench-compare"
 
+# Task-scoped so `mise install` stays lean; mise provisions these on first `mise run bench-compare`.
+# hyfetch ships `neowofetch`, the maintained neofetch fork used for the neofetch comparison.
+tools = { "aqua:sharkdp/hyperfine" = "2.0.0", "aqua:fastfetch-cli/fastfetch" = "2.69.0", "pipx:hyfetch" = "2.1.0" }
 [tasks.install]
 description = "Build purr in release mode and install the binary to CARGO_HOME/bin"
 run = "cargo install --path . --locked"
