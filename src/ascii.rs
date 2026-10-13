@@ -39,6 +39,8 @@ pub fn get_distro_color(distro: &str) -> crossterm::style::Color {
         || d.contains("void")
     {
         Color::DarkGreen
+    } else if d.contains("vylen") {
+        Color::Green
     } else if d.contains("gentoo") {
         Color::DarkMagenta
     } else if d.contains("alpine") {
