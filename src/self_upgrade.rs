@@ -243,7 +243,7 @@ fn download(url: &str, dest: &Path, allow_http: bool) -> Result<(), SelfUpgradeE
     #[cfg(windows)]
     let attempts = {
         let _ = allow_http;
-        let mut ps = Command::new("powershell");
+        let mut ps = windows_powershell();
         ps.args([
             "-NoProfile",
             "-NonInteractive",
@@ -299,7 +299,7 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
     let old = exe.with_extension("exe.old");
     let _ = fs::remove_file(&old);
     fs::rename(exe, &old)?;
-    let status = Command::new("powershell")
+    let status = windows_powershell()
         .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
         .arg(script)
         .envs(receipt.installer_env())
@@ -314,6 +314,17 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
         )),
         other => other,
     }
+}
+
+/// `powershell.exe` (Windows PowerShell 5.1) without the caller's
+/// `PSModulePath`. Launched from PowerShell 7, it would inherit pwsh's module
+/// path and fail to load its own core modules (e.g. `Get-ExecutionPolicy`,
+/// which the installer calls).
+#[cfg(windows)]
+fn windows_powershell() -> Command {
+    let mut cmd = Command::new("powershell");
+    cmd.env_remove("PSModulePath");
+    cmd
 }
 
 /// A fresh directory under the system temp dir, removed on drop.
