@@ -295,9 +295,10 @@ fn run_installer(script: &Path, receipt: &Receipt, _exe: &Path) -> io::Result<Ex
 /// The `.old` copy left by a successful upgrade is removed by the next
 /// `purr self-upgrade`.
 ///
-/// The verified script runs as a script block via `-Command` rather than with
-/// `-File`, so a Group Policy execution policy (which `-ExecutionPolicy Bypass`
-/// cannot override) doesn't block it.
+/// `-ExecutionPolicy Bypass` is needed even beyond running the script file:
+/// cargo-dist's installer itself refuses to run unless `Get-ExecutionPolicy`
+/// is `Unrestricted`, `RemoteSigned`, or `Bypass`, and Windows defaults to
+/// `Restricted`. A Group Policy-enforced policy still wins, as intended.
 #[cfg(windows)]
 fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<ExitStatus> {
     let old = exe.with_extension("exe.old");
@@ -307,10 +308,11 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
         .args([
             "-NoProfile",
             "-NonInteractive",
-            "-Command",
-            "& ([ScriptBlock]::Create([IO.File]::ReadAllText($env:PURR_INSTALLER)))",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
         ])
-        .env("PURR_INSTALLER", script)
+        .arg(script)
         .envs(receipt.installer_env())
         .status();
     if exe.exists() {

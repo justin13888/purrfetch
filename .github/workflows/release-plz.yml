@@ -477,6 +477,20 @@ jobs:
               throw "Bootstrap installer did not leave an install receipt"
             }
             $purr = Join-Path $env:CARGO_HOME "bin\purr.exe"
+            # Windows defaults to Restricted, but runners are Unrestricted;
+            # self-upgrade must still work for a user who never changed it.
+            # Set Windows PowerShell 5.1's CurrentUser policy (its registry
+            # store, separate from pwsh 7's) and confirm 5.1 now sees it.
+            $policyKey = "HKCU:\Software\Microsoft\PowerShell\1\ShellIds\Microsoft.PowerShell"
+            $null = New-Item -Path $policyKey -Force
+            Set-ItemProperty -Path $policyKey -Name ExecutionPolicy -Value Restricted
+            $savedModulePath = $env:PSModulePath
+            $env:PSModulePath = $null
+            $effective = (powershell -NoProfile -Command "Get-ExecutionPolicy" | Out-String).Trim()
+            $env:PSModulePath = $savedModulePath
+            if ($effective -ne "Restricted") {
+              throw "Expected Windows PowerShell to see Restricted, got: $effective"
+            }
             & $purr self-upgrade
             if ($LASTEXITCODE -ne 0) {
               throw "purr self-upgrade failed with exit code $LASTEXITCODE"
