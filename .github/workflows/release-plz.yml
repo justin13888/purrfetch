@@ -470,7 +470,8 @@ jobs:
                 Start-Sleep -Seconds 1
               }
             }
-            & "target/distrib/install.ps1"
+            # The documented one-liner: run the bootstrap through `irm | iex`.
+            Invoke-RestMethod "http://127.0.0.1:8765/install.ps1" | Invoke-Expression
             $receipt = Join-Path $env:XDG_CONFIG_HOME "purrfetch\purrfetch-receipt.json"
             if (-not (Test-Path $receipt)) {
               throw "Bootstrap installer did not leave an install receipt"

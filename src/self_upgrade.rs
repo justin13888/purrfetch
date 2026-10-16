@@ -294,14 +294,23 @@ fn run_installer(script: &Path, receipt: &Receipt, _exe: &Path) -> io::Result<Ex
 /// `purr.exe` aside for the installer and put it back unless a new one landed.
 /// The `.old` copy left by a successful upgrade is removed by the next
 /// `purr self-upgrade`.
+///
+/// The verified script runs as a script block via `-Command` rather than with
+/// `-File`, so a Group Policy execution policy (which `-ExecutionPolicy Bypass`
+/// cannot override) doesn't block it.
 #[cfg(windows)]
 fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<ExitStatus> {
     let old = exe.with_extension("exe.old");
     let _ = fs::remove_file(&old);
     fs::rename(exe, &old)?;
     let status = windows_powershell()
-        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-        .arg(script)
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "& ([ScriptBlock]::Create([IO.File]::ReadAllText($env:PURR_INSTALLER)))",
+        ])
+        .env("PURR_INSTALLER", script)
         .envs(receipt.installer_env())
         .status();
     if exe.exists() {
