@@ -326,6 +326,9 @@ jobs:
             --output-format=json > dist-manifest.json
           cp dist-manifest.json target/distrib/global-dist-manifest.json
           python3 scripts/patch-homebrew-formula.py target/distrib/purr.rb
+          # Version-independent bootstrap installers, published as release
+          # assets alongside cargo-dist's per-release ones.
+          cp scripts/install.sh scripts/install.ps1 target/distrib/
           (
             cd target/distrib
             for checksum in *.sha256; do
@@ -348,6 +351,47 @@ jobs:
             sh target/distrib/purrfetch-installer.sh
           "$install_dir/purr" --version |
             grep -F "${{ needs.prepare.outputs.version }}"
+      - name: Exercise bootstrap installer and self-upgrade
+        run: |
+          set -euo pipefail
+          home=$(mktemp -d)
+          tampered=$(mktemp -d)
+          cp target/distrib/install.sh "$tampered/install.sh"
+          echo "# tampered" >> "$tampered/install.sh"
+          python3 -m http.server 8765 --directory target/distrib \
+            >"$RUNNER_TEMP/purrfetch-http.log" 2>&1 &
+          server_pid=$!
+          python3 -m http.server 8766 --directory "$tampered" \
+            >"$RUNNER_TEMP/purrfetch-http-tampered.log" 2>&1 &
+          tampered_pid=$!
+          trap 'kill "$server_pid" "$tampered_pid"' EXIT
+          curl --retry 10 --retry-delay 1 --retry-connrefused --fail --silent \
+            http://127.0.0.1:8765/install.sh >/dev/null
+          curl --retry 10 --retry-delay 1 --retry-connrefused --fail --silent \
+            http://127.0.0.1:8766/install.sh >/dev/null
+          export HOME="$home" CARGO_HOME="$home/.cargo" XDG_CONFIG_HOME="$home/.config"
+          export PURRFETCH_RELEASE_URL=http://127.0.0.1:8765
+          export PURRFETCH_DOWNLOAD_URL=http://127.0.0.1:8765
+          export PURRFETCH_NO_MODIFY_PATH=1
+          curl --proto '=http' -fsSL "$PURRFETCH_RELEASE_URL/install.sh" | sh
+          test -f "$XDG_CONFIG_HOME/purrfetch/purrfetch-receipt.json"
+          # The installer replaces the binary with a new file, so a changed
+          # inode proves self-upgrade actually reinstalled rather than no-oped.
+          before=$(stat -c %i "$CARGO_HOME/bin/purr")
+          "$CARGO_HOME/bin/purr" self-upgrade
+          after=$(stat -c %i "$CARGO_HOME/bin/purr")
+          [ "$before" != "$after" ] || {
+            echo "::error::self-upgrade did not replace the binary"
+            exit 1
+          }
+          "$CARGO_HOME/bin/purr" --version |
+            grep -F "${{ needs.prepare.outputs.version }}"
+          if PURRFETCH_RELEASE_URL=http://127.0.0.1:8766 \
+            "$CARGO_HOME/bin/purr" self-upgrade 2>"$RUNNER_TEMP/tampered.err"; then
+            echo "::error::self-upgrade ran a tampered installer"
+            exit 1
+          fi
+          grep -F "has changed since this purr was built" "$RUNNER_TEMP/tampered.err"
       - name: Collect upload paths
         id: artifacts
         run: |
@@ -355,6 +399,8 @@ jobs:
             echo "paths<<EOF"
             dist print-upload-files-from-manifest --manifest dist-manifest.json
             echo "target/distrib/global-dist-manifest.json"
+            echo "target/distrib/install.sh"
+            echo "target/distrib/install.ps1"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v7
@@ -398,6 +444,58 @@ jobs:
             $output = & (Join-Path $installDir "purr.exe") --version | Out-String
             if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
               throw "Unexpected installer version output: $output"
+            }
+          } finally {
+            Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
+          }
+      - name: Exercise bootstrap installer and self-upgrade
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "purrfetch-bootstrap"
+          $env:CARGO_HOME = Join-Path $root ".cargo"
+          $env:XDG_CONFIG_HOME = Join-Path $root "config"
+          $env:PURRFETCH_RELEASE_URL = "http://127.0.0.1:8765"
+          $env:PURRFETCH_DOWNLOAD_URL = "http://127.0.0.1:8765"
+          $env:PURRFETCH_NO_MODIFY_PATH = "1"
+          $server = Start-Process python -PassThru -ArgumentList `
+            "-m", "http.server", "8765", "--directory", "target/distrib"
+          try {
+            for ($attempt = 0; $attempt -lt 10; $attempt++) {
+              try {
+                Invoke-WebRequest "http://127.0.0.1:8765/install.ps1" `
+                  -UseBasicParsing | Out-Null
+                break
+              } catch {
+                if ($attempt -eq 9) { throw }
+                Start-Sleep -Seconds 1
+              }
+            }
+            & "target/distrib/install.ps1"
+            $receipt = Join-Path $env:XDG_CONFIG_HOME "purrfetch\purrfetch-receipt.json"
+            if (-not (Test-Path $receipt)) {
+              throw "Bootstrap installer did not leave an install receipt"
+            }
+            $purr = Join-Path $env:CARGO_HOME "bin\purr.exe"
+            & $purr self-upgrade
+            if ($LASTEXITCODE -ne 0) {
+              throw "purr self-upgrade failed with exit code $LASTEXITCODE"
+            }
+            if (-not (Test-Path "$purr.old")) {
+              throw "self-upgrade did not move the running purr.exe aside"
+            }
+            $output = & $purr --version | Out-String
+            if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
+              throw "Unexpected self-upgraded version output: $output"
+            }
+            # A failed archive download must fail the upgrade and keep purr.exe.
+            $env:PURRFETCH_DOWNLOAD_URL = "http://127.0.0.1:9"
+            & $purr self-upgrade
+            if ($LASTEXITCODE -eq 0) {
+              throw "self-upgrade reported success although the install failed"
+            }
+            $output = & $purr --version | Out-String
+            if ($output -notmatch [regex]::Escape("${{ needs.prepare.outputs.version }}")) {
+              throw "purr.exe was not restored after a failed upgrade: $output"
             }
           } finally {
             Stop-Process -Id $server.Id -ErrorAction SilentlyContinue
@@ -538,8 +636,11 @@ jobs:
         run: |
           set -euo pipefail
           dist plan --tag="$RELEASE_TAG" --output-format=json > "$RUNNER_TEMP/plan.json"
-          jq -r '.releases[].artifacts[]' "$RUNNER_TEMP/plan.json" |
-            sort -u > "$RUNNER_TEMP/expected-assets.txt"
+          {
+            jq -r '.releases[].artifacts[]' "$RUNNER_TEMP/plan.json"
+            # Bootstrap installers live outside the dist plan.
+            printf '%s\n' install.sh install.ps1
+          } | sort -u > "$RUNNER_TEMP/expected-assets.txt"
           jq -r '.announcement_github_body' "$RUNNER_TEMP/plan.json" \
             > "$RUNNER_TEMP/release-notes.md"
           title=$(jq -r '.announcement_title' "$RUNNER_TEMP/plan.json")
