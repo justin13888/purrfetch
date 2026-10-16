@@ -165,7 +165,8 @@ archives bundle the same files for manual installation. On Windows,
 
 ### Upgrading
 
-A copy installed by the shell or PowerShell installer can upgrade itself:
+A copy installed by the shell or PowerShell installer can upgrade itself,
+starting with the first release after 1.1.0:
 
 ```bash
 purr self-upgrade
