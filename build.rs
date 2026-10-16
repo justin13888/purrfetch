@@ -19,6 +19,8 @@ fn main() {
     println!("cargo:rerun-if-changed=ascii/distros/");
 
     emit_build_metadata();
+    #[cfg(feature = "self-upgrade")]
+    emit_installer_checksum();
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("ascii_art.rs");
@@ -268,6 +270,26 @@ fn emit_build_metadata() {
     );
     println!("cargo:rustc-env=PURR_BUILD_TIMESTAMP={}", build_timestamp());
     println!("cargo:rustc-env=PURR_RUSTC_VERSION={}", rustc_version());
+}
+
+/// Emit `PURR_INSTALLER_SHA256`: the SHA-256 of the bootstrap installer for the
+/// target OS (`scripts/install.ps1` on Windows, `scripts/install.sh` elsewhere).
+/// `purr self-upgrade` refuses to run a downloaded installer that doesn't match.
+#[cfg(feature = "self-upgrade")]
+fn emit_installer_checksum() {
+    use sha2::{Digest, Sha256};
+
+    let script = match env::var("CARGO_CFG_TARGET_OS").as_deref() {
+        Ok("windows") => "scripts/install.ps1",
+        _ => "scripts/install.sh",
+    };
+    println!("cargo:rerun-if-changed={script}");
+    let bytes = fs::read(script).unwrap_or_else(|e| panic!("Failed to read {script}: {e}"));
+    let hex: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    println!("cargo:rustc-env=PURR_INSTALLER_SHA256={hex}");
 }
 
 /// Short commit hash with a `(clean)`/`(dirty)` suffix, or `unknown` when git
