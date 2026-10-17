@@ -195,7 +195,10 @@ pub fn run() -> Result<(), SelfUpgradeError> {
         reason,
     })?;
 
-    let exe = env::current_exe()?;
+    // Resolve symlinks so a link to the managed binary (e.g. from another
+    // directory on PATH) is judged by the file it points at. If that can't be
+    // resolved, refuse rather than guess.
+    let exe = fs::canonicalize(env::current_exe()?)?;
     let managed = receipt.bin_dir();
     if !is_same_dir(exe.parent(), &managed) {
         return Err(SelfUpgradeError::NotManaged { exe, managed });
@@ -348,7 +351,18 @@ impl TempDir {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let dir = env::temp_dir().join(format!("purr-self-upgrade-{}-{nanos}", std::process::id()));
-        fs::create_dir(&dir)?;
+        // Owner-only, so other local users can't swap the installer between
+        // its checksum check and its execution.
+        #[cfg(unix)]
+        let builder = {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = fs::DirBuilder::new();
+            builder.mode(0o700);
+            builder
+        };
+        #[cfg(not(unix))]
+        let builder = fs::DirBuilder::new();
+        builder.create(&dir)?;
         Ok(Self(dir))
     }
 }
@@ -468,6 +482,15 @@ mod tests {
             path,
             Path::new(r"C:\Users\u\AppData\Local\purrfetch\purrfetch-receipt.json")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn temp_dir_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().unwrap();
+        let mode = fs::metadata(&tmp.0).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 
     #[test]
