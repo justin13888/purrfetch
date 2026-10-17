@@ -294,8 +294,11 @@ fn run_installer(script: &Path, receipt: &Receipt, _exe: &Path) -> io::Result<Ex
 }
 
 /// Windows can't overwrite a running executable but can rename it, so move
-/// `purr.exe` aside for the installer and put it back unless a new one landed.
-/// The `.old` copy left by a successful upgrade is removed by the next
+/// `purr.exe` aside to `purr.exe.old` and put a copy of it back for the
+/// installer to overwrite. A working `purr.exe` thus exists throughout, even
+/// if the upgrade is interrupted. If the installer fails, or reports success
+/// but leaves no `purr.exe`, the previous binary is moved back. The `.old`
+/// file left by a successful upgrade is removed by the next
 /// `purr self-upgrade`.
 ///
 /// `-ExecutionPolicy Bypass` is needed even beyond running the script file:
@@ -307,6 +310,10 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
     let old = exe.with_extension("exe.old");
     let _ = fs::remove_file(&old);
     fs::rename(exe, &old)?;
+    if let Err(e) = fs::copy(&old, exe) {
+        let _ = fs::rename(&old, exe);
+        return Err(e);
+    }
     let status = windows_powershell()
         .args([
             "-NoProfile",
@@ -318,16 +325,18 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
         .arg(script)
         .envs(receipt.installer_env())
         .status();
-    if exe.exists() {
+    let succeeded = matches!(&status, Ok(s) if s.success());
+    if succeeded && exe.exists() {
         return status;
     }
+    // A failed install may have left a partial purr.exe; replace it.
     fs::rename(&old, exe)?;
-    match status {
-        Ok(s) if s.success() => Err(io::Error::other(
+    if succeeded {
+        return Err(io::Error::other(
             "the installer reported success but did not install purr.exe; restored the previous copy",
-        )),
-        other => other,
+        ));
     }
+    status
 }
 
 /// `powershell.exe` (Windows PowerShell 5.1) without the caller's
