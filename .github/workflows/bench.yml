@@ -1,0 +1,38 @@
+name: Benchmark
+
+# Report-only: shared runners are too noisy to gate on, so this never blocks a merge.
+# Reference numbers live in docs/benchmarks.md and come from dedicated machines.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bench-compare:
+    name: bench-compare (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Provisions the task-scoped hyperfine, fastfetch, and hyfetch (neowofetch) on `mise run`.
+      - uses: jdx/mise-action@v2
+      - run: mise run bench-compare
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-results-${{ matrix.os }}
+          path: |
+            bench-results.json
+            bench-results.md
+          if-no-files-found: warn
