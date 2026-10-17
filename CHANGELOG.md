@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0](https://github.com/justin13888/purrfetch/compare/v1.1.0...v1.2.0) - 2026-10-17
+
+### Added
+
+- *(bench)* report peak RSS, cold span timings, and a budget verdict
+
+### Other
+
+- *(release)* pin setup-homebrew to its main branch
+- *(bench)* record macOS reference results
+- *(bench)* record provisional Linux results and cite them in the README
+- *(bench)* add a weekly report-only benchmark workflow
+- *(bench)* run bench-compare's tests in mise run test
+- Add support for Vylen Linux
+
 ## [1.1.0](https://github.com/justin13888/purrfetch/compare/v1.0.2...v1.1.0) - 2026-07-26
 
 ### Added
