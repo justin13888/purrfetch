@@ -182,7 +182,23 @@ pub fn verify_installer(url: &str, script: &[u8], expected: &str) -> Result<(), 
 
 /// Run `purr self-upgrade`.
 pub fn run() -> Result<(), SelfUpgradeError> {
-    let receipt_path = receipt_path(|k| env::var(k).ok())?;
+    upgrade(
+        &env::current_exe()?,
+        |k| env::var(k).ok(),
+        download,
+        run_installer,
+    )
+}
+
+/// [`run`] with the running executable, environment, downloader, and
+/// installer runner passed in, so its refusals can be tested in isolation.
+fn upgrade(
+    exe: &Path,
+    var: impl Fn(&str) -> Option<String>,
+    download: impl FnOnce(&str, &Path, bool) -> Result<(), SelfUpgradeError>,
+    run_installer: impl FnOnce(&Path, &Receipt, &Path) -> io::Result<ExitStatus>,
+) -> Result<(), SelfUpgradeError> {
+    let receipt_path = receipt_path(&var)?;
     let json = match fs::read_to_string(&receipt_path) {
         Ok(json) => json,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
@@ -198,13 +214,13 @@ pub fn run() -> Result<(), SelfUpgradeError> {
     // Resolve symlinks so a link to the managed binary (e.g. from another
     // directory on PATH) is judged by the file it points at. If that can't be
     // resolved, refuse rather than guess.
-    let exe = fs::canonicalize(env::current_exe()?)?;
+    let exe = fs::canonicalize(exe)?;
     let managed = receipt.bin_dir();
     if !is_same_dir(exe.parent(), &managed) {
         return Err(SelfUpgradeError::NotManaged { exe, managed });
     }
 
-    let override_base = env::var(RELEASE_URL_ENV).ok().filter(|v| !v.is_empty());
+    let override_base = var(RELEASE_URL_ENV).filter(|v| !v.is_empty());
     let url = installer_url(override_base.as_deref().unwrap_or(DEFAULT_RELEASE_URL));
     if let Some(base) = &override_base {
         eprintln!(
