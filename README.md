@@ -179,8 +179,16 @@ This downloads the latest release's version-independent bootstrap installer
 matches the one compiled into your `purr`. The bootstrap then runs that
 release's installer, which verifies the archive checksum as a fresh install
 does. If the bootstrap has changed since your build, `purr` refuses and asks
-you to review it and re-run the installer yourself. The command refuses to touch copies installed any other way, so
-upgrade those through Homebrew, Cargo, Mise, or the MSI as usual.
+you to review it and re-run the installer yourself.
+
+The command refuses to touch copies installed any other way, so upgrade those
+through Homebrew, Cargo, Mise, or the MSI as usual. A symlink to the installed
+copy is fine: it is judged by the file it points at. The upgrade reinstalls
+into the directory recorded at install time and leaves your PATH alone. It
+ignores installer overrides in your environment that would skip the install
+receipt or, unless `PURRFETCH_RELEASE_URL` is set, change where the release
+archive is downloaded from. On Windows the running binary is kept as `purr.exe.old` until the next upgrade,
+and is moved back if the installer fails.
 
 ### Deferred distribution channels
 

@@ -100,4 +100,16 @@ Changing either script is therefore a deliberate break: every binary released
 before the change will refuse to self-upgrade and tell its user to re-run the
 installer manually. Keep them stable, and call out any change in the release
 notes. `.gitattributes` pins both to LF so the hash is identical on every
-platform's checkout.
+platform's checkout. The test `bootstrap_scripts_match_pinned_hashes` in
+`src/self_upgrade.rs` pins both hashes (`PINNED_INSTALL_SH_SHA256`,
+`PINNED_INSTALL_PS1_SHA256`), so an accidental edit, even to a comment, fails
+`mise run test`; update those constants only as part of a deliberate break.
+
+`purr self-upgrade` strips caller overrides from the installer's environment:
+`PURRFETCH_UNMANAGED_INSTALL` and `PURRFETCH_DISABLE_UPDATE` always, and the
+archive download-source variables (`PURRFETCH_DOWNLOAD_URL`,
+`INSTALLER_DOWNLOAD_URL`, `PURRFETCH_INSTALLER_GITHUB_BASE_URL`,
+`PURRFETCH_INSTALLER_GHE_BASE_URL`) unless `PURRFETCH_RELEASE_URL` is set. The
+release workflow's self-upgrade smoke tests set `PURRFETCH_RELEASE_URL` to a
+local server so that `PURRFETCH_DOWNLOAD_URL` still reaches the installer and
+it fetches the unpublished archives.
