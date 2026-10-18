@@ -182,13 +182,15 @@ does. If the bootstrap has changed since your build, `purr` refuses and asks
 you to review it and re-run the installer yourself.
 
 The command refuses to touch copies installed any other way, so upgrade those
-through Homebrew, Cargo, Mise, or the MSI as usual. A symlink to the installed
-copy is fine: it is judged by the file it points at. The upgrade reinstalls
-into the directory recorded at install time and leaves your PATH alone. It
-ignores installer overrides in your environment that would skip the install
-receipt or, unless `PURRFETCH_RELEASE_URL` is set, change where the release
-archive is downloaded from. On Windows the running binary is kept as `purr.exe.old` until the next upgrade,
-and is moved back if the installer fails.
+through Homebrew, Cargo, Mise, or the MSI as usual. That includes a
+`cargo install purrfetch --features self-upgrade` build: it has the command but
+no install receipt, so it is refused too. A symlink to the installed copy is
+fine: it is judged by the file it points at. The upgrade reinstalls into the
+directory recorded at install time and leaves your PATH alone. It ignores
+installer overrides in your environment that would skip the install receipt
+or, unless `PURRFETCH_RELEASE_URL` is set, change where the release archive is
+downloaded from. On Windows the running binary is kept as `purr.exe.old` until
+the next upgrade, and is moved back if the installer fails.
 
 ### Deferred distribution channels
 
