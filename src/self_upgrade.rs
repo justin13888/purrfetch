@@ -18,6 +18,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
@@ -371,11 +372,18 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new() -> io::Result<Self> {
+        // The counter keeps names unique within a process (e.g. parallel
+        // tests) even when the clock is coarser than nanoseconds.
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let dir = env::temp_dir().join(format!("purr-self-upgrade-{}-{nanos}", std::process::id()));
+        let dir = env::temp_dir().join(format!(
+            "purr-self-upgrade-{}-{nanos}-{n}",
+            std::process::id()
+        ));
         // Owner-only, so other local users can't swap the installer between
         // its checksum check and its execution.
         #[cfg(unix)]
@@ -404,12 +412,235 @@ mod tests {
 
     const RECEIPT: &str = r#"{"binaries":["purr"],"binary_aliases":{},"cdylibs":[],"cstaticlibs":[],"install_layout":"cargo-home","install_prefix":"/home/u/.cargo","modify_path":true,"provider":{"source":"cargo-dist","version":"0.32.0"},"source":{"app_name":"purrfetch","name":"purrfetch","owner":"justin13888","release_type":"github"},"version":"1.1.0"}"#;
 
+    /// SHA-256 of the bootstrap installers that released binaries trust.
+    /// Changing a script breaks `purr self-upgrade` for every binary released
+    /// before the change, so update these only for a deliberate, release-noted
+    /// break (see docs/releasing.md).
+    const PINNED_INSTALL_SH_SHA256: &str =
+        "b99891ff5fe8034270868f726d0303adc2b8971ae0151134e53c81d467977974";
+    const PINNED_INSTALL_PS1_SHA256: &str =
+        "463bc04ddd744f4399fa289d3651a368b8554ae8a64a1244fb592b0fafb969a0";
+
+    fn bootstrap_script(name: &str) -> Vec<u8> {
+        fs::read(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("scripts")
+                .join(name),
+        )
+        .unwrap()
+    }
+
     #[test]
     fn embedded_checksum_matches_bootstrap_script() {
-        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("scripts")
-            .join(INSTALLER_NAME);
-        assert_eq!(sha256_hex(&fs::read(script).unwrap()), INSTALLER_SHA256);
+        assert_eq!(
+            sha256_hex(&bootstrap_script(INSTALLER_NAME)),
+            INSTALLER_SHA256
+        );
+    }
+
+    #[test]
+    fn bootstrap_scripts_match_pinned_hashes() {
+        assert_eq!(
+            sha256_hex(&bootstrap_script("install.sh")),
+            PINNED_INSTALL_SH_SHA256,
+            "scripts/install.sh changed; released binaries will refuse to self-upgrade"
+        );
+        assert_eq!(
+            sha256_hex(&bootstrap_script("install.ps1")),
+            PINNED_INSTALL_PS1_SHA256,
+            "scripts/install.ps1 changed; released binaries will refuse to self-upgrade"
+        );
+    }
+
+    /// A fake script install under a temp dir: `config/` stands in for
+    /// `XDG_CONFIG_HOME` and `prefix/bin/purr` for the managed binary.
+    struct Install {
+        root: TempDir,
+    }
+
+    impl Install {
+        fn new() -> Self {
+            let install = Self {
+                root: TempDir::new().unwrap(),
+            };
+            fs::create_dir_all(install.prefix().join("bin")).unwrap();
+            fs::create_dir_all(install.config().join(APP_NAME)).unwrap();
+            fs::write(install.exe(), b"").unwrap();
+            install
+        }
+
+        fn config(&self) -> PathBuf {
+            self.root.0.join("config")
+        }
+
+        fn prefix(&self) -> PathBuf {
+            self.root.0.join("prefix")
+        }
+
+        fn exe(&self) -> PathBuf {
+            self.prefix()
+                .join("bin")
+                .join(format!("purr{}", env::consts::EXE_SUFFIX))
+        }
+
+        fn receipt_path(&self) -> PathBuf {
+            self.config()
+                .join(APP_NAME)
+                .join(format!("{APP_NAME}-receipt.json"))
+        }
+
+        /// Write a valid receipt pointing at [`Install::prefix`].
+        fn write_receipt(&self) {
+            let mut json: serde_json::Value = serde_json::from_str(RECEIPT).unwrap();
+            json["install_prefix"] = self.prefix().to_str().unwrap().into();
+            fs::write(self.receipt_path(), json.to_string()).unwrap();
+        }
+
+        fn var(&self) -> impl Fn(&str) -> Option<String> + '_ {
+            |k| (k == "XDG_CONFIG_HOME").then(|| self.config().to_str().unwrap().to_string())
+        }
+    }
+
+    fn no_download(_: &str, _: &Path, _: bool) -> Result<(), SelfUpgradeError> {
+        panic!("must not download the installer");
+    }
+
+    fn no_installer(_: &Path, _: &Receipt, _: &Path) -> io::Result<ExitStatus> {
+        panic!("must not run the installer");
+    }
+
+    fn exit_success() -> ExitStatus {
+        #[cfg(unix)]
+        use std::os::unix::process::ExitStatusExt;
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatus::from_raw(0)
+    }
+
+    #[test]
+    fn upgrade_refuses_without_receipt() {
+        let install = Install::new();
+        match upgrade(&install.exe(), install.var(), no_download, no_installer) {
+            Err(SelfUpgradeError::NoReceipt(path)) => assert_eq!(path, install.receipt_path()),
+            other => panic!("expected NoReceipt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upgrade_refuses_invalid_receipt() {
+        let install = Install::new();
+        fs::write(install.receipt_path(), "not json").unwrap();
+        match upgrade(&install.exe(), install.var(), no_download, no_installer) {
+            Err(SelfUpgradeError::InvalidReceipt { path, .. }) => {
+                assert_eq!(path, install.receipt_path())
+            }
+            other => panic!("expected InvalidReceipt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upgrade_refuses_copy_outside_managed_dir() {
+        let install = Install::new();
+        install.write_receipt();
+        let other_dir = install.root.0.join("elsewhere");
+        fs::create_dir(&other_dir).unwrap();
+        let other = other_dir.join(install.exe().file_name().unwrap());
+        fs::write(&other, b"").unwrap();
+        match upgrade(&other, install.var(), no_download, no_installer) {
+            Err(SelfUpgradeError::NotManaged { exe, managed }) => {
+                assert_eq!(exe, fs::canonicalize(&other).unwrap());
+                assert_eq!(managed, install.prefix().join("bin"));
+            }
+            other => panic!("expected NotManaged, got {other:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn upgrade_follows_symlink_to_managed_copy() {
+        let install = Install::new();
+        install.write_receipt();
+        let link_dir = install.root.0.join("on-path");
+        fs::create_dir(&link_dir).unwrap();
+        let link = link_dir.join("purr");
+        std::os::unix::fs::symlink(install.exe(), &link).unwrap();
+        let script = bootstrap_script(INSTALLER_NAME);
+        let mut ran_with = None;
+        upgrade(
+            &link,
+            install.var(),
+            |_, dest, _| Ok(fs::write(dest, &script)?),
+            |_, _, exe| {
+                ran_with = Some(exe.to_path_buf());
+                Ok(exit_success())
+            },
+        )
+        .unwrap();
+        assert_eq!(ran_with, Some(fs::canonicalize(install.exe()).unwrap()));
+
+        // A link that can't be resolved is refused rather than guessed at.
+        let dangling = link_dir.join("dangling");
+        std::os::unix::fs::symlink(install.root.0.join("missing"), &dangling).unwrap();
+        assert!(matches!(
+            upgrade(&dangling, install.var(), no_download, no_installer),
+            Err(SelfUpgradeError::Io(_))
+        ));
+    }
+
+    #[test]
+    fn upgrade_refuses_changed_installer() {
+        let install = Install::new();
+        install.write_receipt();
+        let result = upgrade(
+            &install.exe(),
+            install.var(),
+            |_, dest, _| Ok(fs::write(dest, b"echo pwned")?),
+            no_installer,
+        );
+        match result {
+            Err(SelfUpgradeError::ChecksumMismatch {
+                url,
+                expected,
+                actual,
+            }) => {
+                assert_eq!(url, installer_url(DEFAULT_RELEASE_URL));
+                assert_eq!(expected, INSTALLER_SHA256);
+                assert_eq!(actual, sha256_hex(b"echo pwned"));
+            }
+            other => panic!("expected ChecksumMismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn upgrade_runs_verified_installer_into_receipt_prefix() {
+        let install = Install::new();
+        install.write_receipt();
+        let script = bootstrap_script(INSTALLER_NAME);
+        let mut fetched = None;
+        let mut ran = None;
+        upgrade(
+            &install.exe(),
+            install.var(),
+            |url, dest, allow_http| {
+                fetched = Some((url.to_string(), allow_http));
+                Ok(fs::write(dest, &script)?)
+            },
+            |path, receipt, _| {
+                let env: Vec<_> = receipt
+                    .installer_env()
+                    .into_iter()
+                    .map(|(k, v)| (k, v.to_os_string()))
+                    .collect();
+                ran = Some((sha256_hex(&fs::read(path)?), env));
+                Ok(exit_success())
+            },
+        )
+        .unwrap();
+        assert_eq!(fetched, Some((installer_url(DEFAULT_RELEASE_URL), false)));
+        let (ran_hash, env) = ran.expect("the installer should run");
+        assert_eq!(ran_hash, INSTALLER_SHA256);
+        assert!(env.contains(&("PURRFETCH_INSTALL_DIR", install.prefix().into_os_string())));
+        assert!(env.contains(&("PURRFETCH_NO_MODIFY_PATH", "1".into())));
     }
 
     #[test]
