@@ -1678,6 +1678,8 @@ dependencies = [
  "humansize",
  "lazy_static",
  "libmacchina",
+ "objc2-core-foundation",
+ "objc2-io-kit",
  "serde",
  "serde_json",
  "sysinfo",

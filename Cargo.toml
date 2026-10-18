@@ -150,3 +150,15 @@ profile = ["dep:tracing-chrome"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5.16.0"
+
+# IOKit bindings for the GPU probe. Both are already in the graph through
+# sysinfo, so they add no crates.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFBase",
+    "CFData",
+    "CFDictionary",
+    "CFString",
+] }
+objc2-io-kit = { version = "0.3.2", default-features = false, features = ["std", "libc"] }
