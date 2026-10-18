@@ -132,6 +132,49 @@ impl Receipt {
     }
 }
 
+/// Installer variables that would stop it refreshing the receipt (an
+/// unmanaged install writes none; a disabled updater writes it without the
+/// update source), so they are never passed through from the caller.
+pub const ALWAYS_SCRUBBED_ENV: [&str; 2] =
+    ["PURRFETCH_UNMANAGED_INSTALL", "PURRFETCH_DISABLE_UPDATE"];
+
+/// Installer variables that change where cargo-dist's installer downloads the
+/// release archive from. They are dropped unless [`RELEASE_URL_ENV`] is set:
+/// that override already fetches the installer from an unverified source, so
+/// letting these through as well grants no additional trust.
+pub const DOWNLOAD_SOURCE_ENV: [&str; 4] = [
+    "PURRFETCH_DOWNLOAD_URL",
+    "INSTALLER_DOWNLOAD_URL",
+    "PURRFETCH_INSTALLER_GITHUB_BASE_URL",
+    "PURRFETCH_INSTALLER_GHE_BASE_URL",
+];
+
+/// Caller environment variables to remove before running the installer.
+pub fn scrubbed_env(release_url_override: bool) -> Vec<&'static str> {
+    let mut vars = ALWAYS_SCRUBBED_ENV.to_vec();
+    if !release_url_override {
+        vars.extend(DOWNLOAD_SOURCE_ENV);
+    }
+    vars
+}
+
+/// The installer's environment: variables to set, and caller variables to
+/// remove first.
+#[derive(Debug)]
+pub struct InstallerEnv<'a> {
+    pub set: Vec<(&'static str, &'a OsStr)>,
+    pub remove: Vec<&'static str>,
+}
+
+impl InstallerEnv<'_> {
+    fn apply(&self, cmd: &mut Command) {
+        for var in &self.remove {
+            cmd.env_remove(var);
+        }
+        cmd.envs(self.set.iter().copied());
+    }
+}
+
 /// Where cargo-dist's installers write the receipt, mirroring their logic:
 /// `XDG_CONFIG_HOME`, else `LOCALAPPDATA` on Windows or `~/.config` elsewhere.
 pub fn receipt_path(var: impl Fn(&str) -> Option<String>) -> Result<PathBuf, SelfUpgradeError> {
@@ -197,7 +240,7 @@ fn upgrade(
     exe: &Path,
     var: impl Fn(&str) -> Option<String>,
     download: impl FnOnce(&str, &Path, bool) -> Result<(), SelfUpgradeError>,
-    run_installer: impl FnOnce(&Path, &Receipt, &Path) -> io::Result<ExitStatus>,
+    run_installer: impl FnOnce(&Path, &InstallerEnv, &Path) -> io::Result<ExitStatus>,
 ) -> Result<(), SelfUpgradeError> {
     let receipt_path = receipt_path(&var)?;
     let json = match fs::read_to_string(&receipt_path) {
@@ -236,7 +279,11 @@ fn upgrade(
     verify_installer(&url, &fs::read(&script_path)?, INSTALLER_SHA256)?;
     println!("Installer checksum verified ({INSTALLER_SHA256})");
 
-    let status = run_installer(&script_path, &receipt, &exe)?;
+    let installer_env = InstallerEnv {
+        set: receipt.installer_env(),
+        remove: scrubbed_env(override_base.is_some()),
+    };
+    let status = run_installer(&script_path, &installer_env, &exe)?;
     if !status.success() {
         return Err(SelfUpgradeError::InstallerFailed(status));
     }
@@ -303,11 +350,11 @@ fn download(url: &str, dest: &Path, allow_http: bool) -> Result<(), SelfUpgradeE
 }
 
 #[cfg(not(windows))]
-fn run_installer(script: &Path, receipt: &Receipt, _exe: &Path) -> io::Result<ExitStatus> {
-    Command::new("sh")
-        .arg(script)
-        .envs(receipt.installer_env())
-        .status()
+fn run_installer(script: &Path, env: &InstallerEnv, _exe: &Path) -> io::Result<ExitStatus> {
+    let mut sh = Command::new("sh");
+    sh.arg(script);
+    env.apply(&mut sh);
+    sh.status()
 }
 
 /// Windows can't overwrite a running executable but can rename it, so move
@@ -323,7 +370,7 @@ fn run_installer(script: &Path, receipt: &Receipt, _exe: &Path) -> io::Result<Ex
 /// is `Unrestricted`, `RemoteSigned`, or `Bypass`, and Windows defaults to
 /// `Restricted`. A Group Policy-enforced policy still wins, as intended.
 #[cfg(windows)]
-fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<ExitStatus> {
+fn run_installer(script: &Path, env: &InstallerEnv, exe: &Path) -> io::Result<ExitStatus> {
     let old = exe.with_extension("exe.old");
     let _ = fs::remove_file(&old);
     fs::rename(exe, &old)?;
@@ -331,17 +378,17 @@ fn run_installer(script: &Path, receipt: &Receipt, exe: &Path) -> io::Result<Exi
         let _ = fs::rename(&old, exe);
         return Err(e);
     }
-    let status = windows_powershell()
-        .args([
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-        ])
-        .arg(script)
-        .envs(receipt.installer_env())
-        .status();
+    let mut ps = windows_powershell();
+    ps.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+    ])
+    .arg(script);
+    env.apply(&mut ps);
+    let status = ps.status();
     let succeeded = matches!(&status, Ok(s) if s.success());
     if succeeded && exe.exists() {
         return status;
@@ -505,7 +552,7 @@ mod tests {
         panic!("must not download the installer");
     }
 
-    fn no_installer(_: &Path, _: &Receipt, _: &Path) -> io::Result<ExitStatus> {
+    fn no_installer(_: &Path, _: &InstallerEnv, _: &Path) -> io::Result<ExitStatus> {
         panic!("must not run the installer");
     }
 
@@ -625,22 +672,83 @@ mod tests {
                 fetched = Some((url.to_string(), allow_http));
                 Ok(fs::write(dest, &script)?)
             },
-            |path, receipt, _| {
-                let env: Vec<_> = receipt
-                    .installer_env()
-                    .into_iter()
-                    .map(|(k, v)| (k, v.to_os_string()))
+            |path, env, _| {
+                let set: Vec<_> = env
+                    .set
+                    .iter()
+                    .map(|&(k, v)| (k, v.to_os_string()))
                     .collect();
-                ran = Some((sha256_hex(&fs::read(path)?), env));
+                ran = Some((sha256_hex(&fs::read(path)?), set, env.remove.clone()));
                 Ok(exit_success())
             },
         )
         .unwrap();
         assert_eq!(fetched, Some((installer_url(DEFAULT_RELEASE_URL), false)));
-        let (ran_hash, env) = ran.expect("the installer should run");
+        let (ran_hash, set, remove) = ran.expect("the installer should run");
         assert_eq!(ran_hash, INSTALLER_SHA256);
-        assert!(env.contains(&("PURRFETCH_INSTALL_DIR", install.prefix().into_os_string())));
-        assert!(env.contains(&("PURRFETCH_NO_MODIFY_PATH", "1".into())));
+        assert!(set.contains(&("PURRFETCH_INSTALL_DIR", install.prefix().into_os_string())));
+        assert!(set.contains(&("PURRFETCH_NO_MODIFY_PATH", "1".into())));
+        assert_eq!(remove, scrubbed_env(false));
+    }
+
+    #[test]
+    fn upgrade_with_release_url_keeps_download_source() {
+        let install = Install::new();
+        install.write_receipt();
+        let script = bootstrap_script(INSTALLER_NAME);
+        let mut fetched = None;
+        let mut removed = None;
+        upgrade(
+            &install.exe(),
+            |k| match k {
+                RELEASE_URL_ENV => Some("http://127.0.0.1:8765/".to_string()),
+                _ => install.var()(k),
+            },
+            |url, dest, allow_http| {
+                fetched = Some((url.to_string(), allow_http));
+                Ok(fs::write(dest, &script)?)
+            },
+            |_, env, _| {
+                removed = Some(env.remove.clone());
+                Ok(exit_success())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            fetched,
+            Some((installer_url("http://127.0.0.1:8765"), true))
+        );
+        assert_eq!(removed, Some(scrubbed_env(true)));
+    }
+
+    #[test]
+    fn scrubbed_env_keeps_download_source_only_with_release_url() {
+        let without = scrubbed_env(false);
+        let with = scrubbed_env(true);
+        for var in ALWAYS_SCRUBBED_ENV {
+            assert!(without.contains(&var) && with.contains(&var), "{var}");
+        }
+        for var in DOWNLOAD_SOURCE_ENV {
+            assert!(without.contains(&var), "{var} should be scrubbed");
+            assert!(!with.contains(&var), "{var} should pass through");
+        }
+        assert!(!without.contains(&RELEASE_URL_ENV));
+        assert!(!without.contains(&"PURRFETCH_NO_MODIFY_PATH"));
+    }
+
+    #[test]
+    fn installer_env_removes_then_sets() {
+        let env = InstallerEnv {
+            set: vec![("PURRFETCH_INSTALL_DIR", OsStr::new("/p"))],
+            remove: scrubbed_env(false),
+        };
+        let mut cmd = Command::new("sh");
+        env.apply(&mut cmd);
+        let applied: Vec<_> = cmd.get_envs().collect();
+        for var in scrubbed_env(false) {
+            assert!(applied.contains(&(OsStr::new(var), None)), "{var}");
+        }
+        assert!(applied.contains(&(OsStr::new("PURRFETCH_INSTALL_DIR"), Some(OsStr::new("/p")))));
     }
 
     #[test]
