@@ -110,6 +110,9 @@ pub enum Command {
     Generate(GenerateCommandArgs),
     /// Return default config file path
     ConfigPath,
+    /// Upgrade a script-installed purr by re-running the verified installer
+    #[cfg(feature = "self-upgrade")]
+    SelfUpgrade,
 }
 
 #[derive(Parser, Debug)]
@@ -144,6 +147,19 @@ mod tests {
 
         let cli = Cli::try_parse_from(["purr"]).unwrap();
         assert_eq!(cli.example, None);
+    }
+
+    #[cfg(feature = "self-upgrade")]
+    #[test]
+    fn self_upgrade_subcommand_parses() {
+        let cli = Cli::try_parse_from(["purr", "self-upgrade"]).unwrap();
+        assert!(matches!(cli.command, Some(Command::SelfUpgrade)));
+    }
+
+    #[cfg(not(feature = "self-upgrade"))]
+    #[test]
+    fn self_upgrade_is_not_available_by_default() {
+        assert!(Cli::try_parse_from(["purr", "self-upgrade"]).is_err());
     }
 
     #[cfg(not(feature = "example"))]

@@ -165,6 +165,33 @@ archives bundle the same files for manual installation. On Windows,
 `purr.ps1` ships in the ZIP and MSI; dot-source it from your PowerShell
 `$PROFILE` to enable completion.
 
+### Upgrading
+
+A copy installed by the shell or PowerShell installer can upgrade itself,
+starting with the first release after 1.1.0:
+
+```bash
+purr self-upgrade
+```
+
+This downloads the latest release's version-independent bootstrap installer
+(`install.sh`, or `install.ps1` on Windows) and runs it only if its SHA-256
+matches the one compiled into your `purr`. The bootstrap then runs that
+release's installer, which verifies the archive checksum as a fresh install
+does. If the bootstrap has changed since your build, `purr` refuses and asks
+you to review it and re-run the installer yourself.
+
+The command refuses to touch copies installed any other way, so upgrade those
+through Homebrew, Cargo, Mise, or the MSI as usual. That includes a
+`cargo install purrfetch --features self-upgrade` build: it has the command but
+no install receipt, so it is refused too. A symlink to the installed copy is
+fine: it is judged by the file it points at. The upgrade reinstalls into the
+directory recorded at install time and leaves your PATH alone. It ignores
+installer overrides in your environment that would skip the install receipt
+or, unless `PURRFETCH_RELEASE_URL` is set, change where the release archive is
+downloaded from. On Windows the running binary is kept as `purr.exe.old` until
+the next upgrade, and is moved back if the installer fails.
+
 ### Deferred distribution channels
 
 `.deb`, `.rpm`, Nix, winget, Scoop, Alpine, AUR/Arch, and Fedora COPR are

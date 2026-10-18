@@ -93,6 +93,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{}", config_path.display());
                 return Ok(());
             }
+            #[cfg(feature = "self-upgrade")]
+            Command::SelfUpgrade => {
+                if let Err(e) = purr_lib::self_upgrade::run() {
+                    eprintln!("purr self-upgrade: {e}");
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
         }
     }
 

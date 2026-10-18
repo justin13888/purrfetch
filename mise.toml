@@ -19,26 +19,29 @@ description = "Verify formatting without modifying files"
 run = "cargo fmt --check"
 
 [tasks.lint]
-description = "Auto-fix clippy lints, then verify default and example builds"
+description = "Auto-fix clippy lints, then verify default, example, and self-upgrade builds"
 # clippy --fix exits 0 even on failure, so re-run a strict check afterwards
 run = [
     "cargo clippy --all-targets --fix --allow-dirty --allow-staged",
     "cargo clippy --all-targets --features example --fix --allow-dirty --allow-staged",
+    "cargo clippy --all-targets --features self-upgrade --fix --allow-dirty --allow-staged",
     "cargo clippy --all-targets -- -D warnings",
     "cargo clippy --all-targets --features example -- -D warnings",
+    "cargo clippy --all-targets --features self-upgrade -- -D warnings",
 ]
 
 [tasks.lint-check]
-description = "Verify default and example clippy lints without modifying files (CI-grade)"
+description = "Verify default, example, and self-upgrade clippy lints without modifying files (CI-grade)"
 run = [
     "cargo clippy --all-targets -- -D warnings",
     "cargo clippy --all-targets --features example -- -D warnings",
+    "cargo clippy --all-targets --features self-upgrade -- -D warnings",
 ]
 
 [tasks.test]
-description = "Run the test suite with default and example features, plus bench-compare's tests"
+description = "Run the test suite with default, example, and self-upgrade features, plus bench-compare's tests"
 # `cargo test` skips tests inside examples, so bench-compare's are run explicitly.
-run = ["cargo test", "cargo test --features example", "cargo test --example bench-compare"]
+run = ["cargo test", "cargo test --features example", "cargo test --features self-upgrade", "cargo test --example bench-compare"]
 
 [tasks.man]
 description = "Regenerate man/purr.1 from the CLI definition"

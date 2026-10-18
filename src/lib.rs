@@ -5,4 +5,6 @@ pub mod config;
 pub mod demo;
 pub mod probe;
 pub mod renderer;
+#[cfg(feature = "self-upgrade")]
+pub mod self_upgrade;
 pub mod version;

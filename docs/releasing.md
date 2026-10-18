@@ -60,8 +60,9 @@ Promotion runs only after `package-preflight`, all five `build-native` targets
 In order, against the exact commit `prepare` resolved:
 
 1. Creates and pushes `vX.Y.Z`, or validates an existing tag points at that commit.
-2. Creates a **draft** GitHub release, uploads the `dist`-planned artifacts, then
-   re-downloads each one and compares it byte-for-byte against the local build.
+2. Creates a **draft** GitHub release, uploads the `dist`-planned artifacts and
+   the bootstrap installers (`install.sh`, `install.ps1`), then re-downloads each
+   one and compares it byte-for-byte against the local build.
 3. Publishes to crates.io via Trusted Publishing, then polls (up to three
    minutes) until the registry reports the expected `.crate` checksum.
 4. Updates `Formula/purr.rb` in the Homebrew tap.
@@ -86,3 +87,29 @@ So the safe response to a mid-way failure is to fix the cause and dispatch the
 same tag again. If a step reports a *mismatch* rather than a missing artifact,
 do not force it — that means something was published from a different build,
 and it needs investigating by hand.
+
+## Bootstrap installers and self-upgrade
+
+`scripts/install.sh` and `scripts/install.ps1` are version-independent wrappers
+around the latest release's cargo-dist installer. Release archives are built
+with the `self-upgrade` feature, which compiles in the SHA-256 of the
+platform's bootstrap script; `purr self-upgrade` downloads the latest one and
+runs it only on an exact match.
+
+Changing either script is therefore a deliberate break: every binary released
+before the change will refuse to self-upgrade and tell its user to re-run the
+installer manually. Keep them stable, and call out any change in the release
+notes. `.gitattributes` pins both to LF so the hash is identical on every
+platform's checkout. The test `bootstrap_scripts_match_pinned_hashes` in
+`src/self_upgrade.rs` pins both hashes (`PINNED_INSTALL_SH_SHA256`,
+`PINNED_INSTALL_PS1_SHA256`), so an accidental edit, even to a comment, fails
+`mise run test`; update those constants only as part of a deliberate break.
+
+`purr self-upgrade` strips caller overrides from the installer's environment:
+`PURRFETCH_UNMANAGED_INSTALL` and `PURRFETCH_DISABLE_UPDATE` always, and the
+archive download-source variables (`PURRFETCH_DOWNLOAD_URL`,
+`INSTALLER_DOWNLOAD_URL`, `PURRFETCH_INSTALLER_GITHUB_BASE_URL`,
+`PURRFETCH_INSTALLER_GHE_BASE_URL`) unless `PURRFETCH_RELEASE_URL` is set. The
+release workflow's self-upgrade smoke tests set `PURRFETCH_RELEASE_URL` to a
+local server so that `PURRFETCH_DOWNLOAD_URL` still reaches the installer and
+it fetches the unpublished archives.
