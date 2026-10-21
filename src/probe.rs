@@ -280,16 +280,175 @@ fn count_packages_macos() -> Vec<(String, usize)> {
     counts
 }
 
-/// GPU names for this platform: `system_profiler` chipset models on macOS.
+/// Decode an IORegistry `model` property stored as bytes. PCI devices (Intel and
+/// AMD GPUs on Intel Macs) publish it as NUL-terminated `CFData`.
+#[cfg(any(target_os = "macos", test))]
+fn model_from_bytes(bytes: &[u8]) -> Option<String> {
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    let model = String::from_utf8_lossy(&bytes[..end]).trim().to_string();
+    (!model.is_empty()).then_some(model)
+}
+
+/// Whether a PCI `class-code` property (a little-endian u32 as `CFData`)
+/// denotes a display controller (base class 0x03).
+#[cfg(any(target_os = "macos", test))]
+fn is_display_class_code(bytes: &[u8]) -> bool {
+    bytes
+        .first_chunk::<4>()
+        .is_some_and(|code| u32::from_le_bytes(*code) >> 16 == 0x03)
+}
+
+/// Copy one property of a live registry entry.
+#[cfg(target_os = "macos")]
+fn iokit_property(
+    entry: objc2_io_kit::io_registry_entry_t,
+    key: &'static str,
+) -> Option<objc2_core_foundation::CFRetained<objc2_core_foundation::CFType>> {
+    use objc2_core_foundation::CFString;
+    use objc2_io_kit::IORegistryEntryCreateCFProperty;
+
+    // SAFETY: `entry` is a live registry entry owned by the caller, the key is a
+    // valid CFString, and the default allocator is passed as `None`.
+    unsafe {
+        IORegistryEntryCreateCFProperty(entry, Some(&CFString::from_static_str(key)), None, 0)
+    }
+}
+
+/// Read an entry's `model` property, which is a `CFString` on Apple Silicon and
+/// NUL-terminated `CFData` on PCI devices.
+#[cfg(target_os = "macos")]
+fn iokit_model(entry: objc2_io_kit::io_registry_entry_t) -> Option<String> {
+    use objc2_core_foundation::{CFData, CFString};
+
+    let value = iokit_property(entry, "model")?;
+    if let Some(s) = value.downcast_ref::<CFString>() {
+        let model = s.to_string().trim().to_string();
+        return (!model.is_empty()).then_some(model);
+    }
+    value
+        .downcast_ref::<CFData>()
+        .and_then(|data| model_from_bytes(&data.to_vec()))
+}
+
+/// Call `f` with every registered service of IOKit class `class`, releasing
+/// each one afterwards. `None` when the lookup itself fails.
+#[cfg(target_os = "macos")]
+fn for_each_iokit_service(
+    class: &std::ffi::CStr,
+    mut f: impl FnMut(objc2_io_kit::io_registry_entry_t),
+) -> Option<()> {
+    use objc2_core_foundation::{CFDictionary, CFRetained};
+    use objc2_io_kit::{
+        IOIteratorNext, IOObjectRelease, IOServiceGetMatchingServices, IOServiceMatching,
+        io_iterator_t,
+    };
+
+    // SAFETY: `class` is a NUL-terminated C string.
+    let matching = unsafe { IOServiceMatching(class.as_ptr()) }?;
+    let matching = CFRetained::<CFDictionary>::from(&matching);
+    let mut iterator: io_iterator_t = 0;
+    // SAFETY: port 0 (MACH_PORT_NULL) selects the default main port on every
+    // macOS release; `matching` is consumed and `iterator` is a valid out-pointer.
+    if unsafe { IOServiceGetMatchingServices(0, Some(matching), &mut iterator) } != 0 {
+        return None;
+    }
+    if iterator == 0 {
+        return Some(());
+    }
+    loop {
+        let entry = IOIteratorNext(iterator);
+        if entry == 0 {
+            break;
+        }
+        f(entry);
+        IOObjectRelease(entry);
+    }
+    IOObjectRelease(iterator);
+    Some(())
+}
+
+/// Number of PCI display controllers (class 0x03xxxx) in the IORegistry. Apple
+/// Silicon's GPU is not a PCI device, so this is 0 there.
+#[cfg(target_os = "macos")]
+fn count_pci_display_devices() -> Option<usize> {
+    use objc2_core_foundation::CFData;
+
+    let mut count = 0;
+    for_each_iokit_service(c"IOPCIDevice", |entry| {
+        if iokit_property(entry, "class-code").is_some_and(|v| {
+            v.downcast_ref::<CFData>()
+                .is_some_and(|d| is_display_class_code(&d.to_vec()))
+        }) {
+            count += 1;
+        }
+    })?;
+    Some(count)
+}
+
+/// GPU names from the IORegistry, without starting a process. Mirrors
+/// fastfetch: each `IOAccelerator` carries `model` on Apple Silicon, while on
+/// Intel Macs it sits on the parent PCI device. `None` requests the
+/// `system_profiler` fallback: when no accelerator is found, when any has no
+/// name, or when a PCI display controller has no accelerator (no driver
+/// loaded), so a GPU is never silently dropped.
+#[cfg(target_os = "macos")]
+fn macos_gpu_models_from_iokit() -> Option<Vec<String>> {
+    use objc2_io_kit::{IOObjectRelease, IORegistryEntryGetParentEntry, io_registry_entry_t};
+
+    // IORegistryEntryGetParentEntry takes an `io_name_t` (char[128]).
+    let mut plane = [0 as std::ffi::c_char; 128];
+    for (dst, &src) in plane.iter_mut().zip(b"IOService") {
+        *dst = src as std::ffi::c_char;
+    }
+
+    let mut models = Vec::new();
+    let mut complete = true;
+    for_each_iokit_service(c"IOAccelerator", |entry| {
+        let model = iokit_model(entry).or_else(|| {
+            let mut parent: io_registry_entry_t = 0;
+            // SAFETY: `entry` is live, `plane` is a NUL-terminated char[128],
+            // and `parent` is a valid out-pointer released below.
+            if unsafe { IORegistryEntryGetParentEntry(entry, &mut plane, &mut parent) } != 0 {
+                return None;
+            }
+            let model = iokit_model(parent);
+            IOObjectRelease(parent);
+            model
+        });
+        match model {
+            Some(model) => models.push(model),
+            None => complete = false,
+        }
+    })?;
+
+    if !complete || models.is_empty() {
+        return None;
+    }
+    // A failed PCI lookup cannot show a missing GPU, so it keeps the fast path.
+    if count_pci_display_devices().unwrap_or(0) > models.len() {
+        return None;
+    }
+    Some(models)
+}
+
+/// GPU names for this platform: IOKit on macOS, falling back to
+/// `system_profiler` chipset models.
 #[cfg(target_os = "macos")]
 fn gpus_list() -> Result<Vec<String>, ProbeError> {
-    let out = run_command("system_profiler", &["SPDisplaysDataType"])?;
-    let models = parse_chipset_models(&out);
-    if models.is_empty() {
-        Err(ProbeError::MetricsUnavailable)
-    } else {
-        Ok(models)
-    }
+    let iokit_models = {
+        let _span = debug_span!("gpu_iokit").entered();
+        macos_gpu_models_from_iokit()
+    };
+    prefer_fast_gpu_models(iokit_models, || {
+        let _span = debug_span!("gpu_system_profiler_fallback").entered();
+        let out = run_command("system_profiler", &["SPDisplaysDataType"])?;
+        let models = parse_chipset_models(&out);
+        if models.is_empty() {
+            Err(ProbeError::MetricsUnavailable)
+        } else {
+            Ok(models)
+        }
+    })
 }
 
 /// Parse the model name populated by udev's PCI database lookup.
@@ -331,15 +490,17 @@ fn linux_gpu_models_from_udev(
     (!models.is_empty()).then_some(models)
 }
 
-#[cfg(target_os = "linux")]
-fn prefer_udev_gpu_models<F>(
-    udev_models: Option<Vec<String>>,
+/// Use names from a platform's fast source when it resolved every GPU,
+/// otherwise run the slower fallback.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn prefer_fast_gpu_models<F>(
+    fast_models: Option<Vec<String>>,
     fallback: F,
 ) -> Result<Vec<String>, ProbeError>
 where
     F: FnOnce() -> Result<Vec<String>, ProbeError>,
 {
-    match udev_models {
+    match fast_models {
         Some(models) => Ok(models),
         None => fallback(),
     }
@@ -356,7 +517,7 @@ fn gpus_list() -> Result<Vec<String>, ProbeError> {
             std::path::Path::new("/run/udev/data"),
         )
     };
-    prefer_udev_gpu_models(udev_models, || {
+    prefer_fast_gpu_models(udev_models, || {
         let _span = debug_span!("gpu_libmacchina_fallback").entered();
         Ok(general_readout().gpus()?)
     })
@@ -1791,8 +1952,8 @@ mod tests {
     }
 
     use super::{
-        map_accent, map_terminal, parse_chipset_models, parse_port_count, parse_vm_stat_page_size,
-        parse_vm_stat_pages, scaled_resolution,
+        is_display_class_code, map_accent, map_terminal, model_from_bytes, parse_chipset_models,
+        parse_port_count, parse_vm_stat_page_size, parse_vm_stat_pages, scaled_resolution,
     };
 
     #[test]
@@ -1840,10 +2001,82 @@ mod tests {
         assert_eq!(parse_chipset_models(sp), vec!["Apple M3 Pro".to_string()]);
     }
 
+    #[test]
+    fn decodes_registry_model_bytes() {
+        assert_eq!(
+            model_from_bytes(b"Intel Iris Plus Graphics 655\0").as_deref(),
+            Some("Intel Iris Plus Graphics 655")
+        );
+        assert_eq!(
+            model_from_bytes(b"AMD Radeon Pro 5500M").as_deref(),
+            Some("AMD Radeon Pro 5500M")
+        );
+        assert_eq!(model_from_bytes(b"  \0garbage"), None);
+        assert_eq!(model_from_bytes(b""), None);
+    }
+
+    #[test]
+    fn recognizes_display_class_codes() {
+        // `class-code` values as ioreg prints them (little-endian u32).
+        assert!(is_display_class_code(&[0x00, 0x00, 0x03, 0x00])); // VGA
+        assert!(is_display_class_code(&[0x00, 0x80, 0x03, 0x00])); // other display
+        assert!(!is_display_class_code(&[0x00, 0x04, 0x06, 0x00])); // PCI bridge
+        assert!(!is_display_class_code(&[0x00, 0x80, 0x02, 0x00])); // network
+        assert!(!is_display_class_code(&[0x00, 0x00, 0x03])); // truncated
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn incomplete_fast_gpu_models_use_fallback() {
+        use std::cell::Cell;
+
+        use super::prefer_fast_gpu_models;
+
+        let called = Cell::new(false);
+        let models = prefer_fast_gpu_models(None, || {
+            called.set(true);
+            Ok(vec!["Fallback GPU".to_string()])
+        })
+        .unwrap();
+        assert!(called.get());
+        assert_eq!(models, ["Fallback GPU"]);
+
+        let fast = prefer_fast_gpu_models(Some(vec!["Fast GPU".to_string()]), || {
+            panic!("fallback must not run when the fast source is complete")
+        })
+        .unwrap();
+        assert_eq!(fast, ["Fast GPU"]);
+    }
+
+    /// On a real Mac, IOKit must name the same GPUs as `system_profiler`.
+    /// Skips only when `system_profiler` lists no chipset (e.g. a VM without a
+    /// GPU); on Apple Silicon the IOKit path must then succeed, so a broken
+    /// lookup cannot pass by silently falling back.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn iokit_gpu_names_match_system_profiler() {
+        let Ok(out) = super::run_command("system_profiler", &["SPDisplaysDataType"]) else {
+            return;
+        };
+        let mut profiler = parse_chipset_models(&out);
+        if profiler.is_empty() {
+            return;
+        }
+        let iokit = super::macos_gpu_models_from_iokit();
+        if cfg!(target_arch = "aarch64") {
+            assert!(iokit.is_some(), "IOKit found no GPU name on Apple Silicon");
+        }
+        let Some(mut iokit) = iokit else {
+            return;
+        };
+        iokit.sort();
+        profiler.sort();
+        assert_eq!(iokit, profiler);
+    }
+
     #[cfg(target_os = "linux")]
     mod linux_gpu {
         use std::{
-            cell::Cell,
             fs,
             path::PathBuf,
             sync::atomic::{AtomicU64, Ordering},
@@ -1851,7 +2084,6 @@ mod tests {
 
         use super::super::{
             is_display_controller_class, linux_gpu_models_from_udev, parse_udev_gpu_model,
-            prefer_udev_gpu_models,
         };
 
         static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -1920,24 +2152,6 @@ mod tests {
             let mut models = linux_gpu_models_from_udev(&pci, &udev).unwrap();
             models.sort();
             assert_eq!(models, ["Discrete GPU", "Integrated GPU"]);
-        }
-
-        #[test]
-        fn incomplete_udev_data_uses_fallback() {
-            let called = Cell::new(false);
-            let models = prefer_udev_gpu_models(None, || {
-                called.set(true);
-                Ok(vec!["Fallback GPU".to_string()])
-            })
-            .unwrap();
-            assert!(called.get());
-            assert_eq!(models, ["Fallback GPU"]);
-
-            let fast = prefer_udev_gpu_models(Some(vec!["Fast GPU".to_string()]), || {
-                panic!("fallback must not run when udev data is complete")
-            })
-            .unwrap();
-            assert_eq!(fast, ["Fast GPU"]);
         }
     }
 

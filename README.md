@@ -22,7 +22,7 @@ Perfect for sharing your [rice](https://www.reddit.com/r/unixporn/) or showing s
 
 [neofetch](https://github.com/dylanaraps/neofetch) is archived and no longer maintained. If its look is part of your terminal-startup ritual — the thing you see every time a shell opens — purr keeps exactly that: the same fields, the same `${c1}`..`${c6}` ASCII, the same vibe. The difference is it starts faster than neofetch on every platform measured, and on Linux it's effectively instant. It's an actively maintained [drop-in successor for Linux, macOS, and Windows](#installation).
 
-- **Fast**: probes run in parallel on native Rust; a typical run finishes in ~4 ms on Linux (on par with fastfetch, hundreds of times faster than neowofetch) and ~230 ms on macOS (about 2.6× faster than neofetch, still well behind fastfetch's ~29 ms). Both runs are provisional ([benchmarks](docs/benchmarks.md))
+- **Fast**: probes run in parallel on native Rust; a typical run finishes in ~4 ms on Linux (on par with fastfetch, hundreds of times faster than neowofetch) and ~29 ms on macOS (on par with fastfetch's ~30 ms, about 14× faster than neofetch). Both runs are provisional ([benchmarks](docs/benchmarks.md))
 - **Cross-platform**: Linux, macOS, and Windows
 - **neofetch-compatible**: matches neofetch's commonly-used info fields, styling, configuration, and `${c1}`..`${c6}` ASCII format. The [parity matrix](docs/neofetch-parity.md) records exactly what's covered and what's intentionally deferred
 - **Highly customizable**: TOML config plus CLI flags for separators, colours, per-field options, color blocks, ASCII overrides, JSON output, and a Kitty image backend
@@ -56,7 +56,7 @@ the wait or the abandonware.** If you're choosing a fetch tool:
   since 2024. purr replicates its default look, fields, flags, and `${c1}`..`${c6}`
   ASCII format (the [parity matrix](docs/neofetch-parity.md) tracks every field),
   while starting faster on both platforms measured: ~4 ms against neowofetch's
-  ~1.7 s on Linux, and ~230 ms against neofetch 7.1.0's ~0.6 s on macOS
+  ~1.7 s on Linux, and ~29 ms against neofetch 7.1.0's ~0.4 s on macOS
   ([benchmarks](docs/benchmarks.md)). If you want neofetch, maintained, that's
   purr.
 - **[fastfetch](https://github.com/fastfetch-cli/fastfetch)** — an excellent,

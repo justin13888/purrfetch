@@ -99,52 +99,56 @@ package counting, bound the run. Every other probe finishes in well under 1 ms.
 
 ## macOS
 
-> **Provisional.** This run was measured on battery power under heavy background load (load average
-> about 15–19 on 12 cores, 25 GiB of 36 GiB memory in use). It needs to be re-run plugged in on an
-> idle system before the macOS item in #39 can be ticked. The HARD miss below is too large to be
-> explained by load alone: fastfetch ran at about 29 ms under the same conditions, and the miss is
-> attributable to a single subprocess (see the span table).
+> **Provisional.** This run was measured plugged in, but not on an idle system (load average about
+> 3.5–4.9 on 12 cores, chat and terminal applications running). HARD passed in both runs of the
+> pair, but purr's margin over fastfetch (1.5 ms) is within one standard deviation of either tool.
+> An earlier pair under a load spike to about 14 passed once and failed once (purr 53.1 ms vs
+> fastfetch 39.2 ms). It needs a re-run on an idle system before the macOS item in #39 can be
+> ticked.
 
 **Machine:** Apple M3 Pro (12 cores), 36 GiB RAM, MacBook Pro (Mac15,7), macOS 26.6.1 (25G76).
 
-**Tools:** purr 1.1.0, fastfetch 2.69.0, neofetch 7.1.0 (Homebrew), neowofetch (Neofetch 8.1.0),
-hyperfine 2.0.0.
+**Tools:** purr 1.1.0 (with the IOKit GPU probe from #43), fastfetch 2.69.0, neofetch 7.1.0
+(Homebrew), neowofetch (Neofetch 8.1.0), hyperfine 2.0.0.
 
 | Tool | Median (ms) | Mean ± σ (ms) | Min (ms) | Max (ms) | Median peak RSS (MiB) |
 |---|---:|---:|---:|---:|---:|
-| purr | 229.1 | 210.1 ± 36.9 | 159.4 | 257.6 | 14.2 |
-| fastfetch | 28.9 | 29.6 ± 2.3 | 27.3 | 38.0 | 16.8 |
-| neofetch | 592.5 | 687.0 ± 344.7 | 497.7 | 2056.9 | 21.7 |
-| neowofetch | 7438.4 | 7464.0 ± 353.5 | 7028.1 | 8667.0 | 39.1 |
+| purr | 28.9 | 29.5 ± 4.0 | 25.9 | 64.6 | 11.9 |
+| fastfetch | 30.4 | 31.5 ± 3.2 | 27.9 | 44.8 | 16.9 |
+| neofetch | 408.1 | 429.4 ± 37.2 | 399.1 | 500.8 | 21.7 |
+| neowofetch | 11796.3 | 11799.0 ± 457.5 | 10708.1 | 12554.7 | 39.1 |
 
-**Binary size:** purr release binary is 2,015,776 bytes (1.92 MiB).
+**Binary size:** purr release binary is 2,016,160 bytes (1.92 MiB).
 
 **Verdict:**
 
-- HARD: **FAIL**. purr median 229.1 ms vs fastfetch median 28.9 ms.
-- SOFT: **WARN**. 229.1 ms > 25 ms.
-- neofetch: purr is about 2.6× faster than neofetch 7.1.0 (median 592.5 ms) and about 32× faster
-  than neowofetch (median 7438.4 ms). bench-compare prefers `neofetch` when it is installed, so the
+- HARD: **PASS**. purr median 28.9 ms vs fastfetch median 30.4 ms (the first run of the pair:
+  26.7 ms vs 30.6 ms).
+- SOFT: **WARN**. 28.9 ms > 25 ms.
+- neofetch: purr is about 14× faster than neofetch 7.1.0 (median 408.1 ms) and about 400× faster
+  than neowofetch (median 11796.3 ms). bench-compare prefers `neofetch` when it is installed, so the
   printed verdict uses neofetch here; the Linux host had only neowofetch.
 
 **Slowest cold spans** (20 runs, traced build, same load):
 
 | Span | Median (ms) | p95 (ms) |
 |---|---:|---:|
-| render (whole probe phase) | 166.16 | 233.31 |
-| probe: GPU (`subprocess: system_profiler`) | 164.98 | 231.76 |
-| probe: Packages | 24.56 | 27.09 |
-| subprocess: brew | 20.02 | 22.17 |
-| probe: Resolution | 19.07 | 22.71 |
-| probe: OS | 18.06 | 20.25 |
-| probe: WM Theme | 16.27 | 18.64 |
-| probe: Theme | 10.24 | 11.62 |
-| subprocess: gsettings (2 per run) | 10.19 | 12.23 |
-| probe: Icons | 9.85 | 12.25 |
-| subprocess: sw_vers (2 per run) | 8.85 | 12.83 |
-| probe: Memory | 8.72 | 11.97 |
-| subprocess: defaults (2 per run) | 7.80 | 10.79 |
+| render (whole probe phase) | 22.78 | 26.83 |
+| probe: Packages | 21.61 | 25.49 |
+| subprocess: brew | 18.46 | 21.26 |
+| probe: Resolution | 17.06 | 21.99 |
+| probe: OS | 15.52 | 19.18 |
+| probe: WM Theme | 14.14 | 17.27 |
+| probe: Icons | 9.49 | 10.25 |
+| subprocess: gsettings (2 per run) | 9.41 | 10.24 |
+| probe: Theme | 9.26 | 9.98 |
+| subprocess: sw_vers (2 per run) | 7.91 | 9.38 |
+| subprocess: defaults (2 per run) | 6.95 | 9.00 |
+| probe: Memory | 6.07 | 8.64 |
+| probe: GPU (`gpu_iokit`) | 0.17 | 0.29 |
 
-The GPU probe's `system_profiler` subprocess alone takes about 165 ms and bounds the whole run.
-Every other probe finishes within about 25 ms, led by Homebrew package counting (`brew`).
-Removing or replacing the `system_profiler` call is what HARD needs on macOS.
+The GPU probe now reads the IORegistry in process and takes about 0.2 ms, down from about 165 ms
+for the `system_profiler` subprocess it replaced (#43). Homebrew package counting (`brew`) now
+bounds the run, followed by the `sw_vers`, `defaults`, and `gsettings` subprocesses behind OS,
+Resolution, and the theme probes. Under heavy load these subprocesses slow purr down more than
+fastfetch, which starts none.
