@@ -134,6 +134,17 @@ clap_mangen = "0.2.30"
 clap_complete = "4.5"
 criterion = { version = "0.8.2", features = ["html_reports"] }
 
+# Full DWARF debug info bloats target/ under fast dev/test iteration. Line tables
+# keep file:line in this package's backtraces; dependency frames keep their
+# symbol names but lose file:line. For full debug info (locals and types in a
+# debugger), override per build: `CARGO_PROFILE_DEV_DEBUG=2` (this package) or
+# `cargo --config 'profile.dev.package."*".debug=2' ...` (dependencies).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = true
 codegen-units = 1
